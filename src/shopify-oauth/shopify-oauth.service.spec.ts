@@ -5,9 +5,10 @@ import { ShopifyOAuthService } from './shopify-oauth.service';
 
 describe('ShopifyOAuthService', () => {
   let service: ShopifyOAuthService;
+  let module: TestingModule;
 
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
@@ -19,9 +20,7 @@ describe('ShopifyOAuthService', () => {
   });
 
   it('loads Shopify credentials from the environment file', () => {
-    const configService = Test.createTestingModule({
-      imports: [AppModule],
-    }).get(ConfigService);
+    const configService = module.get(ConfigService);
 
     expect(configService.get('SHOPIFY_API_KEY')).toBeDefined();
     expect(configService.get('SHOPIFY_API_SECRET')).toBeDefined();

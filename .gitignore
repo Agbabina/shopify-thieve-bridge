@@ -27,6 +27,7 @@ lerna-debug.log*
 *.launch
 .settings/
 *.sublime-workspace
+shopify.env
 
 # IDE - VSCode
 .vscode/*
