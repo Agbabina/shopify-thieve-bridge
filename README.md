@@ -46,7 +46,7 @@ Optional:
 ## Run locally
 
 ```bash
-npm ci
+npm install
 npx playwright install chromium
 npm run start:dev
 ```
