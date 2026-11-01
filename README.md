@@ -78,6 +78,10 @@ All admin, scraper, product-push, and fulfillment operations require:
 
 The former manual order-creation endpoint is intentionally removed. Orders must enter through verified Shopify webhooks.
 
+## Database migration before production
+
+The new dashboard fields add `products.supplierCurrency`, `orders.financialStatus`, and `orders.paymentGateway`. Development auto-sync creates these columns automatically. Because production disables TypeORM synchronization, apply `migrations/2026-11-01-payment-currency.sql` to the existing SQLite database once before deploying this version. Back up the database first; do not run the migration twice.
+
 ## Important deployment notes
 
 - SQLite is for local development. Use PostgreSQL and migrations before a multi-user/production deployment.
