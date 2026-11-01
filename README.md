@@ -1,98 +1,87 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Thieve → Shopify Bridge
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A private NestJS backend for connecting a Shopify store to product sourcing workflows. It supports Shopify OAuth, product scraping/import, draft publishing, order webhooks, and manual supplier fulfillment with Shopify tracking sync.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Current scope
 
-## Description
+- Shopify OAuth install and callback with HMAC + state validation.
+- Store token persistence and refresh support.
+- AliExpress/Thieve URL allow-list for scraping; JSON-LD parsing and mock seed data for development.
+- Product drafts, markup/selling price, and Shopify draft publishing.
+- Idempotent order ingestion for `orders/create` and `orders/paid`.
+- Fulfillment tracking sent to Shopify and synced back through `fulfillments/create`.
+- Private admin dashboard at `/admin` for products, orders, connected stores, and manual tracking submission.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Supplier checkout remains manual by design: supplier sites often require interactive login, payment, and CAPTCHA. The app automates the Shopify-side workflow, not supplier payment.
 
-## Project setup
+## Requirements
 
-```bash
-$ npm install
-```
+- Node.js 20+ (use a current LTS release)
+- npm
+- Shopify development store and app credentials
+- Public HTTPS callback URL (ngrok is fine for local testing)
 
-## Compile and run the project
+## Configuration
 
-```bash
-# development
-$ npm run start
+Copy `.env.example` to `shopify.env` and fill in your values. Never commit the real file.
 
-# watch mode
-$ npm run start:dev
+Required values:
 
-# production mode
-$ npm run start:prod
-```
+- `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`
+- `SHOPIFY_SCOPES`
+- `SHOPIFY_APP_URL` — public base URL, no trailing slash
+- `SHOPIFY_REDIRECT_URL` — must exactly match Shopify app's callback URL
+- `ADMIN_API_KEY` — long random secret for the private dashboard and operational endpoints
 
-## Run tests
+For a CLI that sends a short simulated shop name, set either:
+- `CLI_SIMULATED_SHOP=demo` and `SHOPIFY_DEFAULT_SHOP_DOMAIN=your-store.myshopify.com`, or
+- `SHOPIFY_SHOP_ALIASES=demo=your-store.myshopify.com,staging=other-store.myshopify.com`
 
-```bash
-# unit tests
-$ npm run test
+In development only, an unknown short shop alias falls back to the sole connected store when exactly one store exists. Production requires explicit aliases or the full canonical `*.myshopify.com` domain.
 
-# e2e tests
-$ npm run test:e2e
+Optional:
+- `SHOPIFY_DB_PATH=shopify.db`
+- `NODE_ENV=development`
 
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Run locally
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm ci
+npx playwright install chromium
+npm run start:dev
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+The app listens on `http://localhost:3000`. Open `/admin`, enter `ADMIN_API_KEY`, and use the dashboard.
 
-## Resources
+## Shopify setup
 
-Check out a few resources that may come in handy when working with NestJS:
+1. Configure the app URL and callback URL in the Shopify Dev Dashboard.
+2. Ensure scopes include `read_products,write_products,read_orders,write_orders,read_products,write_products,read_orders,write_orders,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders`.
+3. Expose the local server over HTTPS and set `SHOPIFY_APP_URL` and `SHOPIFY_REDIRECT_URL` to that exact host.
+4. Install/reinstall the app. The OAuth callback registers `orders/create`, `orders/paid`, and `fulfillments/create`.
+5. Check Shopify's webhook delivery log after creating and paying a test order in the development store.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+Webhook endpoints verify Shopify's HMAC using the raw request body. Do not disable signature verification. If you change the public URL, update the app URL, redirect URL, and environment file, then reinstall or re-run webhook registration.
 
-## Support
+## Operations
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+- `GET /api/admin/dashboard` — metrics, stores, recent orders and products.
+- `GET /api/admin/orders` — recent orders.
+- `GET /api/admin/products` — recent products.
+- `POST /api/shopify-products/:productId/push` — create a Shopify draft and persist its Shopify product ID.
+- `POST /api/shopify/orders/:shopifyOrderId/fulfill` — submit tracking and create a Shopify fulfillment.
+- `POST /api/scraper/import` — save a scraped product as a draft.
+- `POST /api/scraper/seed-mock` — seed development-only sample products.
 
-## Stay in touch
+All admin, scraper, product-push, and fulfillment operations require:
+`Authorization: Bearer <ADMIN_API_KEY>`.
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+The former manual order-creation endpoint is intentionally removed. Orders must enter through verified Shopify webhooks.
 
-## License
+## Important deployment notes
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- SQLite is for local development. Use PostgreSQL and migrations before a multi-user/production deployment.
+- TypeORM schema synchronization is disabled when `NODE_ENV=production`; create and run migrations before deploying there.
+- Do not commit `shopify.env`, `.env`, or database files. Removing a file from the latest commit does not erase earlier Git history. Rotate any credentials/tokens that were ever committed.
+- The dashboard is a single-admin operations surface, not a merchant-facing multi-tenant UI.
+- Live webhook delivery and Shopify fulfillment require a real installed development store and valid scopes. Unit/local simulation is not proof of a live Shopify delivery.

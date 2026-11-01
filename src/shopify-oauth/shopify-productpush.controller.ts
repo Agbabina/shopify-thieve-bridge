@@ -1,77 +1,34 @@
-import { Controller, Query, Get, BadRequestException } from '@nestjs/common';
+import { BadRequestException, Controller, Param, Post, UseGuards } from '@nestjs/common';
 import { ProductsService } from './product.service';
 import { ShopifyStoresService } from './shopify-stores.service';
 import { ShopifyProductsService } from './shopify-products.service';
 import { ShopifyTokenService } from './shopify-token.service';
+import { AdminApiKeyGuard } from './admin-api-key.guard';
 
 @Controller('api/shopify-products')
+@UseGuards(AdminApiKeyGuard)
 export class ShopifyProductPushController {
   constructor(
     private readonly productsService: ProductsService,
-    private readonly shopifyStoresService: ShopifyStoresService,
+    private readonly storesService: ShopifyStoresService,
     private readonly shopifyProductsService: ShopifyProductsService,
-    private readonly shopifyTokenService: ShopifyTokenService,
+    private readonly tokenService: ShopifyTokenService,
   ) {}
 
-  @Get('push-to-shopify')
-  async pushToShopify(
-    @Query('productId') productId: string,
-    @Query('shop') shop: string,
-  ) {
-    if (!shop || !productId) {
-      throw new BadRequestException(
-        'Both shop and productId query params are required',
-      );
-    }
-
-    try {
-      const store = await this.shopifyStoresService.findByShop(shop);
-
-      if (!store) {
-        return {
-          success: false,
-          error: 'Store not found - install the app first',
-        };
-      }
-
-      const product = await this.productsService.findById(productId);
-
-      if (!product) {
-        return {
-          success: false,
-          error: 'Product not found',
-        };
-      }
-
-      if (product.status === 'imported') {
-        return {
-          success: false,
-          error: 'Product already imported to Shopify',
-        };
-      }
-
-      const accessToken = await this.shopifyTokenService.getValidToken(shop);
-
-      const shopifyProduct =
-        await this.shopifyProductsService.createProductInShopify(
-          accessToken,
-          shop,
-          product,
-        );
-
-      return {
-        success: true,
-        message: 'Product pushed to Shopify successfully',
-        product: shopifyProduct,
-      };
-    } catch (error: any) {
-      console.error(error);
-
-      return {
-        success: false,
-        error: 'Failed to push product to Shopify',
-        details: error?.message ?? 'Unknown error',
-      };
-    }
+  @Post(':productId/push')
+  async pushToShopify(@Param('productId') productId: string) {
+    const product = await this.productsService.findById(productId);
+    if (!product) throw new BadRequestException('Product not found');
+    if (product.status === 'imported' || product.shopifyProductId) throw new BadRequestException('Product has already been imported');
+    const store = await this.storesService.findByShop(product.store.shop);
+    if (!store) throw new BadRequestException('Connected Shopify store not found');
+    const token = await this.tokenService.getValidToken(store.shop);
+    const created = await this.shopifyProductsService.createProductInShopify(token, store.shop, product);
+    const saved = await this.productsService.markImported(product, String(created.id));
+    return {
+      success: true,
+      message: 'Product imported as a Shopify draft',
+      product: { id: saved.id, shopifyProductId: saved.shopifyProductId, status: saved.status },
+    };
   }
 }

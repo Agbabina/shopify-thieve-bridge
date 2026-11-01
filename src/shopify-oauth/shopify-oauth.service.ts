@@ -1,171 +1,106 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import { normalizeShopDomain } from './shop-domain';
 
 @Injectable()
 export class ShopifyOAuthService {
   private readonly logger = new Logger(ShopifyOAuthService.name);
+  constructor(private readonly config: ConfigService) {}
 
-  constructor(private config: ConfigService) {}
-
-  private getRequiredConfig(key: string): string {
+  private required(key: string): string {
     const value = this.config.get<string>(key);
-    if (!value) {
-      throw new Error(`Missing required Shopify config: ${key}`);
-    }
+    if (!value) throw new Error('Missing required Shopify config: ' + key);
     return value;
   }
 
-  getAuthUrl(
-    shop: string,
-    accessMode: 'offline',
-  ): string {
-    const apiKey = this.getRequiredConfig('SHOPIFY_API_KEY');
-    const scopes = this.getRequiredConfig('SHOPIFY_SCOPES');
-    const redirectUri = this.getRequiredConfig('SHOPIFY_REDIRECT_URL');
-    const state = crypto.randomBytes(16).toString('hex');
-
-    const query = new URLSearchParams({
-      client_id: apiKey,
-      scope: scopes,
-      redirect_uri: redirectUri,
-      state,
-    });
-
-
-    const authUrl = `https://${shop}/admin/oauth/authorize?${query.toString()}`;
-    this.logger.debug(`Generated OAuth URL (${accessMode}): ${authUrl}`);
-    return authUrl;
+  createOAuthState(): string {
+    return crypto.randomBytes(32).toString('hex');
   }
 
-  buildInstallUrl(shop: string): string {
-    return this.getAuthUrl(shop, 'offline');
+  buildInstallUrl(shopInput: string, state: string): string {
+    const shop = normalizeShopDomain(shopInput);
+    const query = new URLSearchParams({
+      client_id: this.required('SHOPIFY_API_KEY'),
+      scope: this.required('SHOPIFY_SCOPES'),
+      redirect_uri: this.required('SHOPIFY_REDIRECT_URL'),
+      state,
+    });
+    return 'https://' + shop + '/admin/oauth/authorize?' + query.toString();
   }
 
   verifyHmac(query: Record<string, string>): boolean {
-  const { hmac, ...rest } = query;
-  if (!hmac) return false; // Handle missing HMAC safely
-
-  const secret = this.getRequiredConfig('SHOPIFY_API_SECRET');
-  const message = Object.keys(rest)
-    .sort()
-    .map((key) => `${key}=${rest[key]}`)
-    .join('&');
-
-  const generatedHash = crypto
-    .createHmac('sha256', secret)
-    .update(message)
-    .digest('hex');
-
-  const a = Buffer.from(generatedHash);
-  const b = Buffer.from(hmac);
-
-  // timingSafeEqual requires identical lengths
-  if (a.length !== b.length) {
-    return false;
+    const { hmac, ...rest } = query;
+    if (!hmac) return false;
+    const message = Object.keys(rest).sort().map((key) => key + '=' + rest[key]).join('&');
+    const digest = crypto.createHmac('sha256', this.required('SHOPIFY_API_SECRET')).update(message).digest('hex');
+    const a = Buffer.from(digest, 'utf8');
+    const b = Buffer.from(hmac, 'utf8');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
   }
 
-  return crypto.timingSafeEqual(a, b);
-}
+  verifyWebhookHmac(rawBody: Buffer, signature: string): boolean {
+    if (!signature) return false;
+    const digest = crypto.createHmac('sha256', this.required('SHOPIFY_API_SECRET')).update(rawBody).digest('base64');
+    const a = Buffer.from(digest, 'utf8');
+    const b = Buffer.from(signature, 'utf8');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  }
 
-  async exchangeCodeForToken(
-    shop: string,
-    code: string,
-  ): Promise<{
-    access_token: string;
-    scope: string;
-    expires_in?: number;
-    refresh_token?: string;
-    refresh_token_expires_in?: number;
+  async exchangeCodeForToken(shopInput: string, code: string): Promise<{
+    access_token: string; scope: string; expires_in?: number; refresh_token?: string; refresh_token_expires_in?: number;
   }> {
-    const apiKey = this.getRequiredConfig('SHOPIFY_API_KEY');
-    const apiSecret = this.getRequiredConfig('SHOPIFY_API_SECRET');
-
-    const response = await fetch(`https://${shop}/admin/oauth/access_token`, {
+    const shop = normalizeShopDomain(shopInput);
+    const response = await fetch('https://' + shop + '/admin/oauth/access_token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        client_id: apiKey,
-        client_secret: apiSecret,
+        client_id: this.required('SHOPIFY_API_KEY'),
+        client_secret: this.required('SHOPIFY_API_SECRET'),
         code,
         expiring: '1',
       }).toString(),
     });
-
-    const data = (await response.json()) as {
-      access_token: string;
-      scope: string;
-      expires_in?: number;
-      refresh_token?: string;
-      refresh_token_expires_in?: number;
+    const data = await response.json() as {
+      access_token?: string; scope?: string; expires_in?: number; refresh_token?: string; refresh_token_expires_in?: number;
     };
-
-    if (!response.ok) {
-      throw new Error(
-        `Token exchange failed: ${response.status} ${response.statusText} - ${JSON.stringify(data)}`,
-      );
-    }
-
-    this.logger.log(
-      `Token received: prefix=${data.access_token.substring(0, 6)} expires_in=${data.expires_in} hasRefresh=${!!data.refresh_token}`,
-    );
-
-    return data;
+    if (!response.ok || !data.access_token) throw new Error('Shopify token exchange failed: ' + response.status);
+    this.logger.log('Shopify token exchange succeeded for ' + shop);
+    return {
+      access_token: data.access_token,
+      scope: data.scope ?? '',
+      expires_in: data.expires_in,
+      refresh_token: data.refresh_token,
+      refresh_token_expires_in: data.refresh_token_expires_in,
+    };
   }
 
- verifyWebhookHmac(rawBody: Buffer, hmacHeader: string): boolean {
-  if (!hmacHeader) return false;
-  
-  const secret = this.getRequiredConfig('SHOPIFY_API_SECRET');
-  const generatedHash = crypto
-    .createHmac('sha256', secret)
-    .update(rawBody)
-    .digest('base64'); // <-- Shopify Webhooks use base64
-
-  const a = Buffer.from(generatedHash);
-  const b = Buffer.from(hmacHeader);
-
-  if (a.length !== b.length) return false;
-
-  return crypto.timingSafeEqual(a, b);
-}
-
-  async registerOrderWebhook(shop: string, accessToken: string) {
-    const address = `${this.getRequiredConfig('SHOPIFY_APP_URL')}/api/shopify/webhooks/orders-create`;
-
-    const response = await fetch(
-      `https://${shop}/admin/api/2026-07/webhooks.json`,
-      {
+  async registerWebhooks(shopInput: string, accessToken: string) {
+    const shop = normalizeShopDomain(shopInput);
+    const baseUrl = this.required('SHOPIFY_APP_URL').replace(/\/+$/, '');
+    const topics = [
+      { topic: 'orders/create', path: '/api/shopify/webhooks/orders-create' },
+      { topic: 'orders/paid', path: '/api/shopify/webhooks/orders-paid' },
+      { topic: 'fulfillments/create', path: '/api/shopify/webhooks/fulfillments-create' },
+    ];
+    const results: Array<{ topic: string; registered: boolean; detail?: string }> = [];
+    for (const item of topics) {
+      const address = baseUrl + item.path;
+      const response = await fetch('https://' + shop + '/admin/api/2026-07/webhooks.json', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Shopify-Access-Token': accessToken,
-        },
-        body: JSON.stringify({
-          webhook: {
-            topic: 'orders/create',
-            address,
-            format: 'json',
-          },
-        }),
-      },
-    );
-
-    const data = await response.json();
-
-    // 422 "already taken" means this webhook is already registered
-    if (response.status === 422 && JSON.stringify(data).includes('already')) {
-      this.logger.log(`Webhook already registered for ${address}`);
-      return data;
+        headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': accessToken },
+        body: JSON.stringify({ webhook: { topic: item.topic, address, format: 'json' } }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.status === 422 && JSON.stringify(payload).toLowerCase().includes('already')) {
+        results.push({ topic: item.topic, registered: true, detail: 'already registered' });
+      } else if (!response.ok) {
+        this.logger.error('Webhook registration failed for ' + item.topic + ': ' + response.status);
+        results.push({ topic: item.topic, registered: false, detail: 'HTTP ' + response.status });
+      } else {
+        results.push({ topic: item.topic, registered: true });
+      }
     }
-
-    if (!response.ok) {
-      throw new Error(
-        `Webhook registration failed: ${response.status} ${JSON.stringify(data)}`,
-      );
-    }
-
-    this.logger.log(`Webhook registered: ${JSON.stringify(data.webhook)}`);
-    return data.webhook;
+    return results;
   }
 }

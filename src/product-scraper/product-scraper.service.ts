@@ -53,7 +53,20 @@ const MOCK_PRODUCTS = [
 
 @Injectable()
 export class ProductScraperService {
+  private validateSupplierUrl(input: string) {
+    let parsed: URL;
+    try { parsed = new URL(input); }
+    catch { throw new Error('A valid supplier URL is required'); }
+    const host = parsed.hostname.toLowerCase();
+    const allowed = ['aliexpress.com', 'thieve.co'];
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password ||
+        !allowed.some((domain) => host === domain || host.endsWith('.' + domain))) {
+      throw new Error('Only HTTPS AliExpress or Thieve product URLs are allowed');
+    }
+  }
+
   async scrapeProduct(url: string) {
+    this.validateSupplierUrl(url);
     const browser = await chromium.launch({ headless: true });
     try {
       const context = await browser.newContext({
