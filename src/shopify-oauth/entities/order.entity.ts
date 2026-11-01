@@ -10,6 +10,8 @@ export class Order {
   @Column({ nullable: true }) customerEmail: string;
   @Column('decimal', { default: 0 }) total: number;
   @Column({ type: 'varchar', default: 'NGN' }) currency: string;
+  @Column({ type: 'varchar', default: 'pending' }) financialStatus: string;
+  @Column({ type: 'text', nullable: true }) paymentGateway: string | null;
   @Column({ default: 'pending' }) status: string;
   @Column({ type: 'text', nullable: true }) lineItemsJson: string | null;
   @Column({ type: 'text', nullable: true }) shippingAddressJson: string | null;
