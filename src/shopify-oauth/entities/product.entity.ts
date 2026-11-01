@@ -19,6 +19,9 @@ export class Product {
   @Column('decimal')
   supplierPrice: number;
 
+  @Column({ type: 'varchar', length: 3, default: 'USD' })
+  supplierCurrency: string;
+
   @Column('decimal', { nullable: true })
   sellingPrice: number;
 

@@ -13,7 +13,7 @@ export class OrdersService {
     return {
       id: order.id, shopifyOrderId: order.shopifyOrderId,
       customerName: order.customerName, customerEmail: order.customerEmail,
-      total: order.total, currency: order.currency, status: order.status,
+      total: Number(order.total), currency: order.currency, financialStatus: order.financialStatus || order.status, paymentGateway: order.paymentGateway, status: order.status,
       trackingNumber: order.trackingNumber, trackingCompany: order.trackingCompany,
       trackingUrl: order.trackingUrl, fulfilledAt: order.fulfilledAt,
       lineItems: order.lineItemsJson ? JSON.parse(order.lineItemsJson) : [],
@@ -31,7 +31,10 @@ export class OrdersService {
     const customer = payload.customer ?? {};
     const total = Number(payload.total_price ?? payload.current_total_price ?? 0);
     const preserveStatus = order?.status === 'fulfilled' || order?.status === 'fulfillment_in_progress';
-    const status = preserveStatus ? order!.status : paid || order?.status === 'paid' ? 'paid' : 'pending';
+    const financialStatus = String(payload.financial_status ?? (paid ? 'paid' : order?.financialStatus ?? 'pending'));
+    const isPaid = paid || financialStatus === 'paid' || financialStatus === 'partially_paid';
+    const status = preserveStatus ? order!.status : isPaid ? 'paid' : 'pending';
+    const paymentGateway = Array.isArray(payload.payment_gateway_names) ? payload.payment_gateway_names.join(', ') : order?.paymentGateway ?? null;
 
     if (!order) {
       order = this.ordersRepo.create({
@@ -40,6 +43,8 @@ export class OrdersService {
         customerEmail: customer.email ?? payload.email ?? '',
         total: Number.isFinite(total) ? total : 0,
         currency: payload.currency ?? 'NGN',
+        financialStatus,
+        paymentGateway,
         status,
         lineItemsJson: JSON.stringify(payload.line_items ?? []),
         shippingAddressJson: payload.shipping_address ? JSON.stringify(payload.shipping_address) : null,
@@ -50,6 +55,8 @@ export class OrdersService {
       order.customerEmail = customer.email ?? payload.email ?? order.customerEmail;
       order.total = Number.isFinite(total) ? total : order.total;
       order.currency = payload.currency ?? order.currency;
+      order.financialStatus = financialStatus;
+      order.paymentGateway = paymentGateway || order.paymentGateway;
       order.lineItemsJson = JSON.stringify(payload.line_items ?? []);
       order.shippingAddressJson = payload.shipping_address ? JSON.stringify(payload.shipping_address) : order.shippingAddressJson;
       order.status = status;

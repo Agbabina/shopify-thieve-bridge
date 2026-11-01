@@ -17,13 +17,14 @@ import { FulfillmentService } from './fulfillment.service';
 import { AdminController } from './admin.controller';
 import { AdminApiKeyGuard } from './admin-api-key.guard';
 import { WebhookEventsService } from './webhook-events.service';
+import { CurrencyService } from './currency.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([ShopifyStore, Product, Order, WebhookEvent])],
   controllers: [ShopifyController, ShopifyProductPushController, FulfillmentController, AdminController],
   providers: [
     ShopifyOAuthService, ShopifyStoresService, ProductsService, ShopifyProductsService,
-    ShopifyTokenService, OrdersService, FulfillmentService, AdminApiKeyGuard, WebhookEventsService,
+    ShopifyTokenService, OrdersService, FulfillmentService, AdminApiKeyGuard, WebhookEventsService, CurrencyService,
   ],
   exports: [ShopifyStoresService, ProductsService, ShopifyProductsService, ShopifyTokenService, OrdersService],
 })

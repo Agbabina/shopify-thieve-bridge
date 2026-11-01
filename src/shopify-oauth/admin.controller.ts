@@ -7,6 +7,8 @@ import { ShopifyStore } from './entities/shopify-store.entity';
 import { WebhookEvent } from './entities/webhook-event.entity';
 import { AdminApiKeyGuard } from './admin-api-key.guard';
 import { OrdersService } from './orders.service';
+import { CurrencyService } from './currency.service';
+import { ConfigService } from '@nestjs/config';
 
 @Controller('api/admin')
 @UseGuards(AdminApiKeyGuard)
@@ -17,6 +19,8 @@ export class AdminController {
     @InjectRepository(ShopifyStore) private readonly stores: Repository<ShopifyStore>,
     @InjectRepository(WebhookEvent) private readonly webhookEvents: Repository<WebhookEvent>,
     private readonly ordersService: OrdersService,
+    private readonly currency: CurrencyService,
+    private readonly config: ConfigService,
   ) {}
 
   @Get('dashboard')
@@ -35,15 +39,28 @@ export class AdminController {
     return {
       generatedAt: new Date().toISOString(),
       metrics: { orderCount, productCount, pendingOrders, draftProducts, revenue: Number(revenue?.total ?? 0) },
+      payment: { provider: this.config.get<string>('SHOPIFY_PAYMENT_PROVIDER') ?? null, storeCurrency: this.config.get<string>('SHOPIFY_STORE_CURRENCY') ?? 'NGN', setupRequired: !this.config.get<string>('SHOPIFY_PAYMENT_PROVIDER') },
       stores,
       recentOrders,
       recentWebhooks,
       recentProducts: recentProducts.map((product) => ({
-        id: product.id, title: product.description, supplierPrice: product.supplierPrice,
+        id: product.id, title: product.description, supplierPrice: product.supplierPrice, supplierCurrency: product.supplierCurrency || 'USD',
         sellingPrice: product.sellingPrice, status: product.status,
         shopifyProductId: product.shopifyProductId, shop: product.store?.shop,
       })),
     };
+  }
+
+  @Get('currency/rate')
+  currencyRate(@Query('from') from: string, @Query('to') to: string, @Query('manualRate') manualRate?: string) {
+    if (!from || !to) throw new BadRequestException('Both from and to currency codes are required.');
+    return this.currency.getRate(from, to, manualRate);
+  }
+
+  @Get('payments/status')
+  paymentStatus() {
+    const provider = this.config.get<string>('SHOPIFY_PAYMENT_PROVIDER') ?? null;
+    return { provider, storeCurrency: this.config.get<string>('SHOPIFY_STORE_CURRENCY') ?? 'NGN', setupRequired: !provider, dashboardUrl: 'https://admin.shopify.com', setupPath: 'Settings > Payments > Add payment methods', note: 'The store owner must activate the gateway in Shopify. Bridge does not collect card details.' };
   }
 
   @Get('orders')
@@ -53,7 +70,7 @@ export class AdminController {
   async listProducts() {
     const products = await this.products.find({ relations: { store: true }, order: { id: 'DESC' }, take: 100 });
     return products.map((product) => ({
-      id: product.id, title: product.description, supplierPrice: product.supplierPrice,
+      id: product.id, title: product.description, supplierPrice: product.supplierPrice, supplierCurrency: product.supplierCurrency || 'USD',
       sellingPrice: product.sellingPrice, status: product.status,
       shopifyProductId: product.shopifyProductId, shop: product.store?.shop,
     }));
