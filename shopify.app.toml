@@ -1,0 +1,21 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "fc100c0a675abaef9547e35f238954ba"
+name = "Sharon"
+application_url = "https://washtub-riddance-handbag.ngrok-free.dev"
+embedded = false
+
+[access_scopes]
+scopes = "read_products,write_products,read_orders,write_orders,read_fulfillments,write_fulfillments"
+optional_scopes = [ ]
+use_legacy_install_flow = true
+
+
+[auth]
+redirect_urls = [ "https://washtub-riddance-handbag.ngrok-free.dev/api/shopify/callback" ]
+
+[app_preferences]
+url = "https://washtub-riddance-handbag.ngrok-free.dev/api/shopify/callback"
+
+[webhooks]
+api_version = "2026-07"

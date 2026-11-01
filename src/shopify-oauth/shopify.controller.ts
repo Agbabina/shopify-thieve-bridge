@@ -52,8 +52,8 @@ export class ShopifyController {
     await this.shopifyStores.upsertStore(
       shop,
       tokenData.access_token,
-      null,
-      undefined,
+      tokenData.refresh_token ?? null,
+      tokenData.expires_in,
       tokenData.scope,
     );
 

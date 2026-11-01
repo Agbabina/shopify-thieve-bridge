@@ -11,10 +11,11 @@ import { ShopifyProductsService } from './shopify-products.service';
 import { ShopifyProductPushController } from './shopify-productpush.controller';
 import { Order } from './entities/order.entity';
 import { OrdersService } from './orders.service';
-
+import { FulfillmentController } from './fulfillment.controller';
+import { FulfillmentService } from './fulfillment.service';
 @Module({
   imports: [TypeOrmModule.forFeature([ShopifyStore, Product, Order])],
-  controllers: [ShopifyController, ShopifyProductPushController],
+  controllers: [ShopifyController, ShopifyProductPushController, FulfillmentController],
   providers: [
     ShopifyOAuthService,
     ShopifyStoresService,
@@ -22,6 +23,7 @@ import { OrdersService } from './orders.service';
     ShopifyProductsService,
     ShopifyTokenService,
     OrdersService,
+    FulfillmentService
   ],
   exports: [
     ShopifyStoresService,

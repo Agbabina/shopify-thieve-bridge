@@ -106,11 +106,9 @@ export class ShopifyOAuthService {
       );
     }
 
-    if (!data.access_token.startsWith('shpat_')) {
-  this.logger.warn(
-    `Unexpected token prefix: ${data.access_token.substring(0, 10)}... Expected shpat_`,
-  );
-    }   
+    this.logger.log(
+      `Token received: prefix=${data.access_token.substring(0, 6)} expires_in=${data.expires_in} hasRefresh=${!!data.refresh_token}`,
+    );
 
     return data;
   }
@@ -133,25 +131,41 @@ export class ShopifyOAuthService {
 }
 
   async registerOrderWebhook(shop: string, accessToken: string) {
-  const response = await fetch(
-    `https://${shop}/admin/api/2026-07/webhooks.json`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json', // Switch to JSON
-        'X-Shopify-Access-Token': accessToken,
-      },
-      body: JSON.stringify({
-        webhook: {
-          topic: 'orders/create',
-          address: `${this.getRequiredConfig('SHOPIFY_APP_URL')}/api/shopify/webhooks/orders-create`,
-          format: 'json',
-        },
-      }),
-    },
-  );
+    const address = `${this.getRequiredConfig('SHOPIFY_APP_URL')}/api/shopify/webhooks/orders-create`;
 
-  const data = await response.json();
-  // ... rest of your error handling
-}
+    const response = await fetch(
+      `https://${shop}/admin/api/2026-07/webhooks.json`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': accessToken,
+        },
+        body: JSON.stringify({
+          webhook: {
+            topic: 'orders/create',
+            address,
+            format: 'json',
+          },
+        }),
+      },
+    );
+
+    const data = await response.json();
+
+    // 422 "already taken" means this webhook is already registered
+    if (response.status === 422 && JSON.stringify(data).includes('already')) {
+      this.logger.log(`Webhook already registered for ${address}`);
+      return data;
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `Webhook registration failed: ${response.status} ${JSON.stringify(data)}`,
+      );
+    }
+
+    this.logger.log(`Webhook registered: ${JSON.stringify(data.webhook)}`);
+    return data.webhook;
+  }
 }
