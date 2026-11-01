@@ -26,7 +26,9 @@ main{max-width:1200px;margin:auto;padding:36px 22px 64px}.top{display:flex;justi
 <p class="footer">Private admin surface. The API key stays in this page's memory and is not saved to local storage. Fulfillment sends tracking details to Shopify and notifies the customer.</p>
 </main>
 <script>
-let adminKey='';\nlet displayCurrency='NGN',manualRate='',fxRates={};\ntry{displayCurrency=localStorage.getItem('bridge-display-currency')||'NGN';manualRate=localStorage.getItem('bridge-usd-ngn-rate')||'';}catch{}
+let adminKey='';
+let displayCurrency='NGN',manualRate='',fxRates={};
+try{displayCurrency=localStorage.getItem('bridge-display-currency')||'NGN';manualRate=localStorage.getItem('bridge-usd-ngn-rate')||'';}catch{}
 const el=(id)=>document.getElementById(id);
 const esc=(v)=>String(v??'').replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=(v,c='USD')=>{const source=String(c||'USD').toUpperCase(),rate=source===displayCurrency?1:fxRates[source];if(!rate)return new Intl.NumberFormat(undefined,{style:'currency',currency:source}).format(Number(v)||0);return new Intl.NumberFormat(undefined,{style:'currency',currency:displayCurrency,maximumFractionDigits:2}).format((Number(v)||0)*rate)};
