@@ -85,9 +85,9 @@ export class ProductsService {
     if (sellingPrice === undefined || !Number.isFinite(Number(sellingPrice)) || Number(sellingPrice) <= 0) {
       errors.push('A positive selling price in the configured Shopify store currency is required');
     }
-    const sellingCurrency = String(scrapedData.sellingCurrency ?? this.config.get<string>('SHOPIFY_STORE_CURRENCY') ?? 'NGN').toUpperCase();
+    const sellingCurrency = String(scrapedData.sellingCurrency ?? this.config.get<string>('SHOPIFY_STORE_CURRENCY') ?? '').toUpperCase();
     let grossMarginPercent: number | null = null;
-    if (sellingPrice !== undefined && Number.isFinite(Number(sellingPrice)) && Number(sellingPrice) > 0) {
+    if (sellingPrice !== undefined && Number.isFinite(Number(sellingPrice)) && Number(sellingPrice) > 0 && /^[A-Z]{3}$/.test(supplierCurrency) && /^[A-Z]{3}$/.test(sellingCurrency)) {
       try {
         const fx = await this.getConfiguredRate(supplierCurrency, sellingCurrency);
         grossMarginPercent = Math.round(((Number(sellingPrice) - supplierPrice * fx.rate) / Number(sellingPrice)) * 10000) / 100;
