@@ -131,7 +131,7 @@ Orders must enter through verified Shopify webhooks; there is no manual order-cr
 
 ## Database and deployment caveats
 
-The repository currently uses SQLite. Back up the database before migrations. For an existing SQLite database, apply these once and in order:
+The repository currently uses SQLite. Back up the database before schema changes. When `NODE_ENV=production` (TypeORM synchronization disabled), apply these once and in order. Local development runs TypeORM synchronization automatically; do not also apply these migrations to a development database that already has the new columns:
 1. `migrations/2026-11-01-payment-currency.sql`
 2. `migrations/2026-11-21-thieve-source-pipeline.sql`
 
