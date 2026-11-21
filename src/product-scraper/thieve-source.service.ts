@@ -25,6 +25,7 @@ type ShopifySourceProduct = {
 
 const SOURCE_PRODUCTS_QUERY = `
   query BridgeSourceProducts($first: Int!, $after: String, $query: String!) {
+    shop { currencyCode }
     products(first: $first, after: $after, query: $query, sortKey: UPDATED_AT, reverse: true) {
       nodes {
         id
@@ -43,8 +44,8 @@ const SOURCE_PRODUCTS_QUERY = `
             inventoryItem { unitCost { amount currencyCode } }
           }
         }
-        pageInfo { hasNextPage endCursor }
       }
+      pageInfo { hasNextPage endCursor }
     }
   }
 `;
@@ -69,7 +70,8 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const intervalMinutes = Math.max(5, Number(this.config.get('THIEVE_SOURCE_SYNC_INTERVAL_MINUTES') ?? 30));
+    const configuredInterval = Number(this.config.get('THIEVE_SOURCE_SYNC_INTERVAL_MINUTES') ?? 30);
+    const intervalMinutes = Number.isFinite(configuredInterval) ? Math.max(5, configuredInterval) : 30;
     void this.syncConfiguredSource().catch((error: unknown) => {
       this.logger.error('Initial Thieve source sync failed: ' + this.message(error));
     });
@@ -115,10 +117,7 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
     const version = this.config.get<string>('SHOPIFY_ADMIN_API_VERSION') ?? '2026-07';
     const response = await fetch('https://' + shop + '/admin/api/' + version + '/graphql.json', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': token,
-      },
+      headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': token },
       body: JSON.stringify({
         query: SOURCE_PRODUCTS_QUERY,
         variables: { first: 50, after, query },
@@ -126,7 +125,13 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
       signal: AbortSignal.timeout(15000),
     });
     const body = await response.json().catch(() => ({})) as {
-      data?: { products?: { nodes?: ShopifySourceProduct[]; pageInfo?: { hasNextPage: boolean; endCursor: string | null } } };
+      data?: {
+        shop?: { currencyCode?: string };
+        products?: {
+          nodes?: ShopifySourceProduct[];
+          pageInfo?: { hasNextPage: boolean; endCursor: string | null };
+        };
+      };
       errors?: { message?: string }[];
     };
     if (!response.ok || body.errors?.length || !body.data?.products) {
@@ -136,7 +141,11 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
         (reason ? ' ' + reason : ''),
       );
     }
-    return body.data.products;
+    return {
+      nodes: body.data.products.nodes ?? [],
+      pageInfo: body.data.products.pageInfo,
+      storeCurrency: String(body.data.shop?.currencyCode ?? 'NGN').toUpperCase(),
+    };
   }
 
   async syncConfiguredSource() {
@@ -151,7 +160,8 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
       if (!store) throw new ServiceUnavailableException('Connect ' + shop + ' through Shopify OAuth before source sync can run.');
       const token = await this.tokens.getValidToken(shop);
       const tag = this.config.get<string>('THIEVE_SOURCE_TAG')?.trim();
-      const query = tag ? 'status:draft tag:' + tag.replace(/[^a-zA-Z0-9_-]/g, '') : 'status:draft';
+      const safeTag = tag?.replace(/[^a-zA-Z0-9_-]/g, '');
+      const query = safeTag ? 'status:draft tag:' + safeTag : 'status:draft';
       let after: string | null = null;
       let hasNextPage = true;
       let pages = 0;
@@ -160,19 +170,19 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
       let inspected = 0;
 
       while (hasNextPage && pages < 4) {
-        const result = await this.fetchPage(shop, token, after, query);
-        const connection = result as typeof result & { pageInfo?: { hasNextPage: boolean; endCursor: string | null } };
-        const nodes = connection.nodes ?? [];
-        for (const source of nodes) {
+        const connection = await this.fetchPage(shop, token, after, query);
+        for (const source of connection.nodes) {
           inspected++;
           const variants = source.variants?.nodes ?? [];
           const primary = variants[0];
           const cost = primary?.inventoryItem?.unitCost;
           const supplierPrice = Number(cost?.amount ?? 0);
           const sellingPrice = Number(primary?.price ?? 0);
-          const supplierCurrency = String(cost?.currencyCode ?? primary?.inventoryItem?.unitCost?.currencyCode ?? primary?.price ? (cost?.currencyCode ?? 'USD') : 'USD').toUpperCase();
-          const sellingCurrency = String(cost?.currencyCode ?? 'USD').toUpperCase();
-          const imageUrls = (source.images?.nodes ?? []).map((image) => image.url).filter((url) => /^https:\/\//i.test(url));
+          const sellingCurrency = connection.storeCurrency;
+          const supplierCurrency = String(cost?.currencyCode ?? sellingCurrency).toUpperCase();
+          const imageUrls = (source.images?.nodes ?? [])
+            .map((image) => image.url)
+            .filter((url) => /^https:\/\//i.test(url));
           const validationErrors: string[] = [];
 
           if (source.title.trim().length < 5) validationErrors.push('Product title is missing or too short');
@@ -182,7 +192,7 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
           if (!/^[A-Z]{3}$/.test(supplierCurrency)) validationErrors.push('Supplier currency is missing or invalid');
           if (!imageUrls.length) validationErrors.push('At least one HTTPS product image is required');
 
-          const existed = await this.products.saveFromThieveSource({
+          const saved = await this.products.saveFromThieveSource({
             sourceShopifyProductId: source.id,
             sourceUrl: source.onlineStoreUrl || 'https://' + shop + '/products/' + source.handle,
             supplierName: source.vendor || 'Thieve',
@@ -195,12 +205,11 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
             variants,
             validationErrors,
           }, store);
-          if (existed) updated++;
-          else imported++;
+          if (saved.created) imported++;
+          else updated++;
         }
-        const pageInfo = connection.pageInfo;
-        hasNextPage = Boolean(pageInfo?.hasNextPage);
-        after = pageInfo?.endCursor ?? null;
+        hasNextPage = Boolean(connection.pageInfo?.hasNextPage);
+        after = connection.pageInfo?.endCursor ?? null;
         pages++;
       }
 
