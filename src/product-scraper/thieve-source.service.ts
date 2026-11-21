@@ -115,6 +115,23 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
     return host;
   }
 
+  private async sourceFxRate(from: string, to: string) {
+    const manualRate = this.config.get<string>('PRODUCT_FX_MANUAL_RATE');
+    const manualFrom = String(this.config.get('PRODUCT_FX_MANUAL_FROM') ?? 'USD').toUpperCase();
+    const manualTo = String(this.config.get('PRODUCT_FX_MANUAL_TO') ?? 'NGN').toUpperCase();
+    if (manualRate && from === manualFrom && to === manualTo) {
+      return this.currency.getRate(from, to, manualRate);
+    }
+    if (manualRate && from === manualTo && to === manualFrom) {
+      const value = Number(manualRate);
+      if (!Number.isFinite(value) || value <= 0) {
+        throw new ServiceUnavailableException('PRODUCT_FX_MANUAL_RATE must be a positive number');
+      }
+      return this.currency.getRate(from, to, String(1 / value));
+    }
+    return this.currency.getRate(from, to);
+  }
+
   private async fetchPage(shop: string, token: string, after: string | null, query: string) {
     const version = this.config.get<string>('SHOPIFY_ADMIN_API_VERSION') ?? '2026-07';
     const response = await fetch('https://' + shop + '/admin/api/' + version + '/graphql.json', {
@@ -205,7 +222,7 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
           if (!imageUrls.length) validationErrors.push('At least one HTTPS product image is required');
           if (cost?.currencyCode && supplierPrice > 0 && sellingPrice > 0 && /^[A-Z]{3}$/.test(supplierCurrency) && /^[A-Z]{3}$/.test(sellingCurrency)) {
             try {
-              const fx = await this.currency.getRate(supplierCurrency, sellingCurrency);
+              const fx = await this.sourceFxRate(supplierCurrency, sellingCurrency);
               const supplierCostInStoreCurrency = supplierPrice * fx.rate;
               grossMarginPercent = ((sellingPrice - supplierCostInStoreCurrency) / sellingPrice) * 100;
               const minimumMargin = Number(this.config.get('PRODUCT_MIN_GROSS_MARGIN_PERCENT') ?? 20);
