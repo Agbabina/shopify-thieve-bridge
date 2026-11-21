@@ -58,7 +58,12 @@ export class ShopifyStoresService {
 
   private async toRuntimeStore(store: ShopifyStore): Promise<ShopifyStore> {
     const key = this.encryptionKey();
-    if (!key) return store;
+    if (!key) {
+      if (store.accessToken.startsWith('enc:v1:') || store.refreshToken?.startsWith('enc:v1:')) {
+        throw new ServiceUnavailableException('TOKEN_ENCRYPTION_KEY is required to read encrypted Shopify tokens');
+      }
+      return store;
+    }
     let changed = false;
     if (store.accessToken && !store.accessToken.startsWith('enc:v1:')) {
       store.accessToken = this.encryptToken(store.accessToken) as string;
