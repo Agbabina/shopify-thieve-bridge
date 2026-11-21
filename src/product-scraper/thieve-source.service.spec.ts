@@ -49,7 +49,9 @@ describe('ThieveSourceService', () => {
                   title: 'Default Title',
                   sku: 'SKU-1',
                   price: '100',
-                  inventoryItem: { unitCost: { amount: '50', currencyCode: 'NGN' } },
+                  inventoryQuantity: 10,
+                  inventoryPolicy: 'DENY',
+                  inventoryItem: { tracked: true, unitCost: { amount: '50', currencyCode: 'NGN' } },
                 }],
               },
             }],
@@ -96,8 +98,8 @@ describe('ThieveSourceService', () => {
               images: { nodes: [{ url: 'https://cdn.shopify.com/product.jpg' }] },
               variants: {
                 nodes: [
-                  { id: 'gid://shopify/ProductVariant/1', title: 'Small', sku: 'S', price: '100', inventoryItem: { unitCost: { amount: '50', currencyCode: 'NGN' } } },
-                  { id: 'gid://shopify/ProductVariant/2', title: 'Large', sku: 'L', price: '120', inventoryItem: { unitCost: { amount: '72', currencyCode: 'NGN' } } },
+                  { id: 'gid://shopify/ProductVariant/1', title: 'Small', sku: 'S', price: '100', inventoryQuantity: 10, inventoryPolicy: 'DENY', inventoryItem: { tracked: true, unitCost: { amount: '50', currencyCode: 'NGN' } } },
+                  { id: 'gid://shopify/ProductVariant/2', title: 'Large', sku: 'L', price: '120', inventoryQuantity: 5, inventoryPolicy: 'DENY', inventoryItem: { tracked: true, unitCost: { amount: '72', currencyCode: 'NGN' } } },
                 ],
                 pageInfo: { hasNextPage: false },
               },
