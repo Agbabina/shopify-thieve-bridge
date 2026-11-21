@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Post, Query, UseGuards, BadRequestException } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards, BadRequestException, Param } from '@nestjs/common';
 import { ProductScraperService } from './product-scraper.service';
+import { ThieveSourceService } from './thieve-source.service';
 import { ProductsService } from '../shopify-oauth/product.service';
 import { ShopifyStoresService } from '../shopify-oauth/shopify-stores.service';
 import { AdminApiKeyGuard } from '../shopify-oauth/admin-api-key.guard';
@@ -9,9 +10,23 @@ import { AdminApiKeyGuard } from '../shopify-oauth/admin-api-key.guard';
 export class ProductScraperController {
   constructor(
     private readonly scraperService: ProductScraperService,
+    private readonly thieveSourceService: ThieveSourceService,
     private readonly productsService: ProductsService,
     private readonly shopifyStoresService: ShopifyStoresService,
   ) {}
+
+  @Post('source/sync')
+  syncConfiguredSource() {
+    return this.thieveSourceService.syncConfiguredSource();
+  }
+
+  @Post(':productId/approve')
+  async approveProduct(@Param('productId') productId: string) {
+    const product = await this.productsService.findById(productId);
+    if (!product) throw new BadRequestException('Product not found');
+    const approved = await this.productsService.approve(product);
+    return { success: true, product: { id: approved.id, status: approved.status } };
+  }
 
   @Get('test')
   async test(@Query('url') url: string) {
@@ -43,7 +58,7 @@ export class ProductScraperController {
     const scrapedData = await this.scraperService.scrapeAndParse(body.url);
     if (!scrapedData) throw new BadRequestException('Could not parse a product from that URL');
     const saved = await this.productsService.saveFromScrape(scrapedData, store, body.sellingPrice);
-    return { message: 'Product saved as draft', product: saved };
+    return { message: 'Product saved for validation and approval', product: saved };
   }
 
   @Get('search')
@@ -64,10 +79,11 @@ export class ProductScraperController {
     const store = await this.shopifyStoresService.findByShop(body.shop);
     if (!store) throw new BadRequestException('Store not found - install the app first');
     const saved: any[] = [];
-    for (const mockProduct of this.scraperService.getMockProducts()) {
+    for (const [index, mockProduct] of this.scraperService.getMockProducts().entries()) {
       const suggestedPrice = Math.round(Number(mockProduct.price) * 1.5);
-      saved.push(await this.productsService.saveFromScrape(mockProduct, store, suggestedPrice));
+      const sample = { ...mockProduct, sourceUrl: 'https://www.aliexpress.com/item/bridge-mock-' + (index + 1) + '.html' };
+      saved.push(await this.productsService.saveFromScrape(sample, store, suggestedPrice));
     }
-    return { message: saved.length + ' mock products saved', products: saved };
+    return { message: saved.length + ' mock products saved for validation', products: saved };
   }
 }

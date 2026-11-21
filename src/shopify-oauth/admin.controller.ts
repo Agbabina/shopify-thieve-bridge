@@ -25,12 +25,18 @@ export class AdminController {
 
   @Get('dashboard')
   async dashboard() {
-    const [orderCount, productCount, pendingOrders, draftProducts, revenue, stores, recentOrders, recentProducts, recentWebhooks] = await Promise.all([
+    const [orderCount, productCount, pendingOrders, draftProducts, pendingReviewProducts, revenueByCurrency, stores, recentOrders, recentProducts, recentWebhooks] = await Promise.all([
       this.orders.count(),
       this.products.count(),
       this.orders.count({ where: [{ status: 'pending' }, { status: 'paid' }, { status: 'fulfillment_in_progress' }] }),
       this.products.count({ where: { status: 'draft' } }),
-      this.orders.createQueryBuilder('order').select('COALESCE(SUM(order.total), 0)', 'total').getRawOne(),
+      this.products.count({ where: { status: 'pending_review' } }),
+      this.orders.createQueryBuilder('order')
+        .select('order.currency', 'currency')
+        .addSelect('COALESCE(SUM(order.total), 0)', 'total')
+        .where('order.financialStatus = :paid', { paid: 'paid' })
+        .groupBy('order.currency')
+        .getRawMany(),
       this.stores.find({ select: { id: true, shop: true, scope: true, updatedAt: true, lastRefreshAt: true }, order: { updatedAt: 'DESC' } }),
       this.ordersService.dashboardOrders(15),
       this.products.find({ relations: { store: true }, order: { id: 'DESC' }, take: 15 }),
@@ -38,15 +44,30 @@ export class AdminController {
     ]);
     return {
       generatedAt: new Date().toISOString(),
-      metrics: { orderCount, productCount, pendingOrders, draftProducts, revenue: Number(revenue?.total ?? 0) },
-      payment: { provider: this.config.get<string>('SHOPIFY_PAYMENT_PROVIDER') ?? null, storeCurrency: this.config.get<string>('SHOPIFY_STORE_CURRENCY') ?? 'NGN', setupRequired: !this.config.get<string>('SHOPIFY_PAYMENT_PROVIDER') },
+      metrics: { orderCount, productCount, pendingOrders, draftProducts, pendingReviewProducts, revenueByCurrency: revenueByCurrency.map((row) => ({ currency: row.currency, total: Number(row.total) })) },
+      payment: {
+        provider: this.config.get<string>('SHOPIFY_PAYMENT_PROVIDER') ?? null,
+        storeCurrency: this.config.get<string>('SHOPIFY_STORE_CURRENCY') ?? 'NGN',
+        setupRequired: !this.config.get<string>('SHOPIFY_PAYMENT_PROVIDER'),
+      },
       stores,
       recentOrders,
       recentWebhooks,
       recentProducts: recentProducts.map((product) => ({
-        id: product.id, title: product.description, supplierPrice: product.supplierPrice, supplierCurrency: product.supplierCurrency || 'USD',
-        sellingPrice: product.sellingPrice, status: product.status,
-        shopifyProductId: product.shopifyProductId, shop: product.store?.shop,
+        id: product.id,
+        title: product.description,
+        supplierPrice: Number(product.supplierPrice),
+        supplierCurrency: product.supplierCurrency,
+        sellingPrice: product.sellingPrice === null ? null : Number(product.sellingPrice),
+        sellingCurrency: product.sellingCurrency,
+        grossMarginPercent: product.grossMarginPercent === null ? null : Number(product.grossMarginPercent),
+        variantCount: product.sourceVariantsJson ? JSON.parse(product.sourceVariantsJson).length : 1,
+        status: product.status,
+        validationStatus: product.validationStatus,
+        validationErrors: product.validationErrorsJson ? JSON.parse(product.validationErrorsJson) : [],
+        sourceUrl: product.sourceUrl,
+        shopifyProductId: product.shopifyProductId,
+        shop: product.store?.shop,
       })),
     };
   }
@@ -60,19 +81,39 @@ export class AdminController {
   @Get('payments/status')
   paymentStatus() {
     const provider = this.config.get<string>('SHOPIFY_PAYMENT_PROVIDER') ?? null;
-    return { provider, storeCurrency: this.config.get<string>('SHOPIFY_STORE_CURRENCY') ?? 'NGN', setupRequired: !provider, dashboardUrl: 'https://admin.shopify.com', setupPath: 'Settings > Payments > Add payment methods', note: 'The store owner must activate the gateway in Shopify. Bridge does not collect card details.' };
+    return {
+      provider,
+      storeCurrency: this.config.get<string>('SHOPIFY_STORE_CURRENCY') ?? 'NGN',
+      setupRequired: !provider,
+      dashboardUrl: 'https://admin.shopify.com',
+      setupPath: 'Settings > Payments > Add payment methods',
+      note: 'The store owner must activate the gateway in Shopify. Bridge does not collect card details.',
+    };
   }
 
   @Get('orders')
-  listOrders() { return this.ordersService.dashboardOrders(100); }
+  listOrders() {
+    return this.ordersService.dashboardOrders(100);
+  }
 
   @Get('products')
   async listProducts() {
     const products = await this.products.find({ relations: { store: true }, order: { id: 'DESC' }, take: 100 });
     return products.map((product) => ({
-      id: product.id, title: product.description, supplierPrice: product.supplierPrice, supplierCurrency: product.supplierCurrency || 'USD',
-      sellingPrice: product.sellingPrice, status: product.status,
-      shopifyProductId: product.shopifyProductId, shop: product.store?.shop,
+      id: product.id,
+      title: product.description,
+      supplierPrice: Number(product.supplierPrice),
+      supplierCurrency: product.supplierCurrency,
+      sellingPrice: product.sellingPrice === null ? null : Number(product.sellingPrice),
+      sellingCurrency: product.sellingCurrency,
+      grossMarginPercent: product.grossMarginPercent === null ? null : Number(product.grossMarginPercent),
+      variantCount: product.sourceVariantsJson ? JSON.parse(product.sourceVariantsJson).length : 1,
+      status: product.status,
+      validationStatus: product.validationStatus,
+      validationErrors: product.validationErrorsJson ? JSON.parse(product.validationErrorsJson) : [],
+      sourceUrl: product.sourceUrl,
+      shopifyProductId: product.shopifyProductId,
+      shop: product.store?.shop,
     }));
   }
 }

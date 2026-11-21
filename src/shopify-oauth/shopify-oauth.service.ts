@@ -14,8 +14,26 @@ export class ShopifyOAuthService {
     return value;
   }
 
-  createOAuthState(): string {
-    return crypto.randomBytes(32).toString('hex');
+  createOAuthState(shopInput: string): string {
+    const shop = normalizeShopDomain(shopInput);
+    const nonce = crypto.randomBytes(32).toString('hex');
+    const signature = crypto.createHmac('sha256', this.required('SHOPIFY_API_SECRET'))
+      .update(nonce + ':' + shop)
+      .digest('hex');
+    return nonce + '.' + signature;
+  }
+
+  verifyOAuthState(state: string, shopInput: string): boolean {
+    if (!state || !state.includes('.')) return false;
+    const shop = normalizeShopDomain(shopInput);
+    const [nonce, supplied] = state.split('.');
+    if (!nonce || !supplied || !/^[a-f0-9]{64}$/i.test(nonce) || !/^[a-f0-9]{64}$/i.test(supplied)) return false;
+    const expected = crypto.createHmac('sha256', this.required('SHOPIFY_API_SECRET'))
+      .update(nonce + ':' + shop)
+      .digest('hex');
+    const a = Buffer.from(expected, 'utf8');
+    const b = Buffer.from(supplied, 'utf8');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
   }
 
   buildInstallUrl(shopInput: string, state: string): string {
@@ -79,26 +97,73 @@ export class ShopifyOAuthService {
     const shop = normalizeShopDomain(shopInput);
     const baseUrl = this.required('SHOPIFY_APP_URL').replace(/\/+$/, '');
     const topics = [
-      { topic: 'orders/create', path: '/api/shopify/webhooks/orders-create' },
-      { topic: 'orders/paid', path: '/api/shopify/webhooks/orders-paid' },
-      { topic: 'fulfillments/create', path: '/api/shopify/webhooks/fulfillments-create' },
+      { topic: 'ORDERS_CREATE', path: '/api/shopify/webhooks/orders-create' },
+      { topic: 'ORDERS_PAID', path: '/api/shopify/webhooks/orders-paid' },
+      { topic: 'FULFILLMENTS_CREATE', path: '/api/shopify/webhooks/fulfillments-create' },
     ];
+    const mutation = `
+      mutation BridgeWebhookCreate(
+        $topic: WebhookSubscriptionTopic!
+        $subscription: WebhookSubscriptionInput!
+      ) {
+        webhookSubscriptionCreate(topic: $topic, webhookSubscription: $subscription) {
+          webhookSubscription { id topic uri }
+          userErrors { field message }
+        }
+      }
+    `;
+    const version = this.config.get<string>('SHOPIFY_ADMIN_API_VERSION') ?? '2026-07';
     const results: Array<{ topic: string; registered: boolean; detail?: string }> = [];
+
     for (const item of topics) {
       const address = baseUrl + item.path;
-      const response = await fetch('https://' + shop + '/admin/api/2026-07/webhooks.json', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': accessToken },
-        body: JSON.stringify({ webhook: { topic: item.topic, address, format: 'json' } }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (response.status === 422 && JSON.stringify(payload).toLowerCase().includes('already')) {
-        results.push({ topic: item.topic, registered: true, detail: 'already registered' });
-      } else if (!response.ok) {
-        this.logger.error('Webhook registration failed for ' + item.topic + ': ' + response.status);
-        results.push({ topic: item.topic, registered: false, detail: 'HTTP ' + response.status });
-      } else {
-        results.push({ topic: item.topic, registered: true });
+      try {
+        const response = await fetch('https://' + shop + '/admin/api/' + version + '/graphql.json', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Shopify-Access-Token': accessToken,
+          },
+          body: JSON.stringify({
+            query: mutation,
+            variables: {
+              topic: item.topic,
+              subscription: { uri: address, format: 'JSON' },
+            },
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        const body = await response.json().catch(() => ({})) as {
+          data?: {
+            webhookSubscriptionCreate?: {
+              webhookSubscription?: { id: string; uri: string } | null;
+              userErrors?: { message: string }[];
+            };
+          };
+          errors?: { message?: string }[];
+        };
+        const payload = body.data?.webhookSubscriptionCreate;
+        const errors = [
+          ...(body.errors ?? []).map((error) => error.message ?? 'GraphQL error'),
+          ...(payload?.userErrors ?? []).map((error) => error.message),
+        ];
+        if (!response.ok || errors.length || !payload?.webhookSubscription) {
+          const detail = errors.join('; ');
+          const alreadyExists = /already exists|already registered|duplicate/i.test(detail);
+          results.push({
+            topic: item.topic,
+            registered: alreadyExists,
+            detail: alreadyExists ? 'already registered' : (detail || 'HTTP ' + response.status),
+          });
+        } else {
+          results.push({ topic: item.topic, registered: true });
+        }
+      } catch (error) {
+        results.push({
+          topic: item.topic,
+          registered: false,
+          detail: error instanceof Error ? error.message : 'Webhook registration failed',
+        });
       }
     }
     return results;

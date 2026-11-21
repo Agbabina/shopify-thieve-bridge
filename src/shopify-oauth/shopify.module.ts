@@ -26,6 +26,6 @@ import { CurrencyService } from './currency.service';
     ShopifyOAuthService, ShopifyStoresService, ProductsService, ShopifyProductsService,
     ShopifyTokenService, OrdersService, FulfillmentService, AdminApiKeyGuard, WebhookEventsService, CurrencyService,
   ],
-  exports: [ShopifyStoresService, ProductsService, ShopifyProductsService, ShopifyTokenService, OrdersService],
+  exports: [ShopifyStoresService, ProductsService, ShopifyProductsService, ShopifyTokenService, OrdersService, CurrencyService],
 })
 export class ShopifyModule {}

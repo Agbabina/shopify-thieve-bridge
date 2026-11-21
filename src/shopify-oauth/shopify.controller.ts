@@ -1,5 +1,5 @@
 import {
-  BadRequestException, Controller, Get, Post, Query, Res, Req, UnauthorizedException,
+  BadRequestException, ConflictException, Controller, Get, Post, Query, Res, Req, UnauthorizedException,
 } from '@nestjs/common';
 import type { Response, Request } from 'express';
 import type { RawBodyRequest } from '@nestjs/common';
@@ -22,7 +22,7 @@ export class ShopifyController {
   @Get('install')
   install(@Query('shop') shop: string, @Res() res: Response) {
     const domain = normalizeShopDomain(shop);
-    const state = this.shopifyOAuth.createOAuthState();
+    const state = this.shopifyOAuth.createOAuthState(domain);
     res.cookie('shopify_oauth_state', state, {
       httpOnly: true, secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax', maxAge: 5 * 60 * 1000, path: '/api/shopify/callback',
@@ -40,9 +40,11 @@ export class ShopifyController {
     const a = Buffer.from(state);
     const b = Buffer.from(savedState);
     if (!savedState || a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new UnauthorizedException('OAuth state validation failed. Restart installation.');
-    res.clearCookie('shopify_oauth_state', { path: '/api/shopify/callback' });
-
     const domain = normalizeShopDomain(shop);
+    if (!this.shopifyOAuth.verifyOAuthState(state, domain)) {
+      throw new UnauthorizedException('OAuth state is not valid for this Shopify store. Restart installation.');
+    }
+    res.clearCookie('shopify_oauth_state', { path: '/api/shopify/callback' });
     const tokenData = await this.shopifyOAuth.exchangeCodeForToken(domain, code);
     await this.shopifyStores.upsertStore(domain, tokenData.access_token, tokenData.refresh_token ?? null, tokenData.expires_in, tokenData.scope);
     const webhooks = await this.shopifyOAuth.registerWebhooks(domain, tokenData.access_token);
@@ -62,18 +64,35 @@ export class ShopifyController {
   @Post('webhooks/fulfillments-create')
   async handleFulfillmentCreated(@Req() req: RawBodyRequest<Request>) {
     const event = await this.verifyAndLoadWebhook(req);
-    if (await this.webhookEvents.wasProcessed(event.webhookId)) return { received: true, duplicate: true };
-    await this.ordersService.applyFulfillmentWebhook(event.payload, event.store);
-    await this.webhookEvents.markProcessed(event.webhookId, event.topic, event.store.shop);
-    return { received: true };
+    return this.processWebhook(event, () =>
+      this.ordersService.applyFulfillmentWebhook(event.payload, event.store),
+    );
   }
 
   private async handleOrderWebhook(req: RawBodyRequest<Request>, paid: boolean) {
     const event = await this.verifyAndLoadWebhook(req);
-    if (await this.webhookEvents.wasProcessed(event.webhookId)) return { received: true, duplicate: true };
-    await this.ordersService.saveFromWebhook(event.payload, event.store, paid);
-    await this.webhookEvents.markProcessed(event.webhookId, event.topic, event.store.shop);
-    return { received: true };
+    return this.processWebhook(event, () =>
+      this.ordersService.saveFromWebhook(event.payload, event.store, paid),
+    );
+  }
+
+  private async processWebhook(
+    event: { webhookId: string; topic: string; store: { shop: string } },
+    work: () => Promise<unknown>,
+  ) {
+    const claim = await this.webhookEvents.claim(event.webhookId, event.topic, event.store.shop);
+    if (claim === 'processed') return { received: true, duplicate: true };
+    if (claim === 'processing') {
+      throw new ConflictException('This webhook is already being processed; retry delivery shortly');
+    }
+    try {
+      await work();
+      await this.webhookEvents.markProcessed(event.webhookId);
+      return { received: true };
+    } catch (error) {
+      await this.webhookEvents.markFailed(event.webhookId, error).catch(() => undefined);
+      throw error;
+    }
   }
 
   private async verifyAndLoadWebhook(req: RawBodyRequest<Request>) {

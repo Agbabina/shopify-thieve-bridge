@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Order } from './entities/order.entity';
@@ -29,7 +29,10 @@ export class OrdersService {
       relations: { store: true },
     });
     const customer = payload.customer ?? {};
-    const total = Number(payload.total_price ?? payload.current_total_price ?? 0);
+    const total = Number(payload.total_price ?? payload.current_total_price);
+    if (!Number.isFinite(total) || total < 0) throw new BadRequestException('Shopify order total is missing or invalid');
+    const currency = String(payload.currency ?? order?.currency ?? '').toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) throw new BadRequestException('Shopify order currency is missing or invalid');
     const preserveStatus = order?.status === 'fulfilled' || order?.status === 'fulfillment_in_progress';
     const financialStatus = String(payload.financial_status ?? (paid ? 'paid' : order?.financialStatus ?? 'pending'));
     const isPaid = paid || financialStatus === 'paid' || financialStatus === 'partially_paid';
@@ -41,8 +44,8 @@ export class OrdersService {
         shopifyOrderId,
         customerName: (String(customer.first_name ?? '') + ' ' + String(customer.last_name ?? '')).trim() || 'Guest',
         customerEmail: customer.email ?? payload.email ?? '',
-        total: Number.isFinite(total) ? total : 0,
-        currency: payload.currency ?? 'NGN',
+        total,
+        currency,
         financialStatus,
         paymentGateway,
         status,
@@ -53,8 +56,8 @@ export class OrdersService {
     } else {
       order.customerName = (String(customer.first_name ?? '') + ' ' + String(customer.last_name ?? '')).trim() || order.customerName || 'Guest';
       order.customerEmail = customer.email ?? payload.email ?? order.customerEmail;
-      order.total = Number.isFinite(total) ? total : order.total;
-      order.currency = payload.currency ?? order.currency;
+      order.total = total;
+      order.currency = currency;
       order.financialStatus = financialStatus;
       order.paymentGateway = paymentGateway || order.paymentGateway;
       order.lineItemsJson = JSON.stringify(payload.line_items ?? []);
