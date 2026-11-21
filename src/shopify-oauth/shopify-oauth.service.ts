@@ -14,8 +14,26 @@ export class ShopifyOAuthService {
     return value;
   }
 
-  createOAuthState(): string {
-    return crypto.randomBytes(32).toString('hex');
+  createOAuthState(shopInput: string): string {
+    const shop = normalizeShopDomain(shopInput);
+    const nonce = crypto.randomBytes(32).toString('hex');
+    const signature = crypto.createHmac('sha256', this.required('SHOPIFY_API_SECRET'))
+      .update(nonce + ':' + shop)
+      .digest('hex');
+    return nonce + '.' + signature;
+  }
+
+  verifyOAuthState(state: string, shopInput: string): boolean {
+    if (!state || !state.includes('.')) return false;
+    const shop = normalizeShopDomain(shopInput);
+    const [nonce, supplied] = state.split('.');
+    if (!nonce || !supplied || !/^[a-f0-9]{64}$/i.test(nonce) || !/^[a-f0-9]{64}$/i.test(supplied)) return false;
+    const expected = crypto.createHmac('sha256', this.required('SHOPIFY_API_SECRET'))
+      .update(nonce + ':' + shop)
+      .digest('hex');
+    const a = Buffer.from(expected, 'utf8');
+    const b = Buffer.from(supplied, 'utf8');
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
   }
 
   buildInstallUrl(shopInput: string, state: string): string {
