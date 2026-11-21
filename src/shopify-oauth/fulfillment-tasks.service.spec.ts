@@ -39,9 +39,15 @@ describe('FulfillmentTasksService', () => {
       .rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('requires tracking before a task can be marked shipped', async () => {
-    repository.findOne.mockResolvedValue({ id: 'task-1', status: 'processing', trackingNumber: null });
+  it('requires tracking number before a task can be marked shipped', async () => {
+    repository.findOne.mockResolvedValue({ id: 'task-1', status: 'processing', trackingNumber: null, trackingUrl: null });
     await expect(service.update('task-1', { status: 'shipped' }))
       .rejects.toThrow('A tracking number is required');
+  });
+
+  it('requires an HTTPS tracking URL before a task can be marked shipped', async () => {
+    repository.findOne.mockResolvedValue({ id: 'task-1', status: 'processing', trackingNumber: 'TRACK-1', trackingUrl: null });
+    await expect(service.update('task-1', { status: 'shipped' }))
+      .rejects.toThrow('An HTTPS tracking URL is required');
   });
 });
