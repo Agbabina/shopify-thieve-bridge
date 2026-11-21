@@ -79,9 +79,10 @@ export class ProductScraperController {
     const store = await this.shopifyStoresService.findByShop(body.shop);
     if (!store) throw new BadRequestException('Store not found - install the app first');
     const saved: any[] = [];
-    for (const mockProduct of this.scraperService.getMockProducts()) {
+    for (const [index, mockProduct] of this.scraperService.getMockProducts().entries()) {
       const suggestedPrice = Math.round(Number(mockProduct.price) * 1.5);
-      saved.push(await this.productsService.saveFromScrape(mockProduct, store, suggestedPrice));
+      const sample = { ...mockProduct, sourceUrl: 'https://www.aliexpress.com/item/bridge-mock-' + (index + 1) + '.html' };
+      saved.push(await this.productsService.saveFromScrape(sample, store, suggestedPrice));
     }
     return { message: saved.length + ' mock products saved for validation', products: saved };
   }
