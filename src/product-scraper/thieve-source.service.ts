@@ -250,7 +250,7 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
 
           const saved = await this.products.saveFromThieveSource({
             sourceShopifyProductId: source.id,
-            sourceUrl: source.onlineStoreUrl || 'https://' + shop + '/products/' + source.handle,
+            sourceUrl: 'https://' + shop + '/admin/products/' + source.id.split('/').pop(),
             supplierName: source.vendor || 'Thieve',
             title: source.title,
             bodyHtml: source.descriptionHtml ?? null,
