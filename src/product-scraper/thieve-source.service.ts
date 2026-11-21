@@ -35,8 +35,8 @@ const SOURCE_PRODUCTS_QUERY = `
         vendor
         handle
         onlineStoreUrl
-        images(first: 20) { nodes { url } }
-        variants(first: 100) {
+        images(first: 10) { nodes { url } }
+        variants(first: 20) {
           nodes {
             id
             title
@@ -132,14 +132,14 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
     return this.currency.getRate(from, to);
   }
 
-  private async fetchPage(shop: string, token: string, after: string | null, query: string) {
+  private async fetchPage(shop: string, token: string, after: string | null, query: string, first: number) {
     const version = this.config.get<string>('SHOPIFY_ADMIN_API_VERSION') ?? '2026-07';
     const response = await fetch('https://' + shop + '/admin/api/' + version + '/graphql.json', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': token },
       body: JSON.stringify({
         query: SOURCE_PRODUCTS_QUERY,
-        variables: { first: 50, after, query },
+        variables: { first, after, query },
       }),
       signal: AbortSignal.timeout(15000),
     });
@@ -195,9 +195,13 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
       let imported = 0;
       let updated = 0;
       let inspected = 0;
+      const maxProducts = Number(this.config.get('THIEVE_SOURCE_MAX_PRODUCTS') ?? 1000);
+      if (!Number.isInteger(maxProducts) || maxProducts < 1 || maxProducts > 10000) {
+        throw new ServiceUnavailableException('THIEVE_SOURCE_MAX_PRODUCTS must be an integer from 1 to 10000');
+      }
 
-      while (hasNextPage && pages < 4) {
-        const connection = await this.fetchPage(shop, token, after, query);
+      while (hasNextPage && inspected < maxProducts) {
+        const connection = await this.fetchPage(shop, token, after, query, Math.min(25, maxProducts - inspected));
         for (const source of connection.nodes) {
           inspected++;
           const variants = source.variants?.nodes ?? [];
@@ -259,7 +263,7 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
         pages++;
       }
 
-      const summary = { shop, inspected, imported, updated, pages, query };
+      const summary = { shop, inspected, imported, updated, pages, query, truncated: hasNextPage };
       this.logger.log('Thieve source sync completed: ' + JSON.stringify(summary));
       return summary;
     } finally {
