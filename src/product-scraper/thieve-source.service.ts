@@ -210,6 +210,9 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
 
       while (hasNextPage && inspected < maxProducts) {
         const connection = await this.fetchPage(shop, token, after, query, Math.min(25, maxProducts - inspected));
+        if (connection.pageInfo?.hasNextPage && (!connection.pageInfo.endCursor || connection.nodes.length === 0)) {
+          throw new ServiceUnavailableException('Shopify source pagination returned no usable cursor; sync stopped to avoid looping');
+        }
         for (const source of connection.nodes) {
           inspected++;
           const variants = source.variants?.nodes ?? [];
