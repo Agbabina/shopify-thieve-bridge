@@ -23,6 +23,9 @@ export class Product {
   @Column('text')
   description: string;
 
+  @Column({ type: 'text', nullable: true })
+  bodyHtml: string | null;
+
   @Column('decimal')
   supplierPrice: number;
 
