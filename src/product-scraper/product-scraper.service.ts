@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { chromium } from 'playwright';
 import * as cheerio from 'cheerio';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 
 const MOCK_PRODUCTS = [
   {
@@ -58,10 +60,48 @@ export class ProductScraperService {
     try { parsed = new URL(input); }
     catch { throw new Error('A valid supplier URL is required'); }
     const host = parsed.hostname.toLowerCase();
-    const allowed = ['aliexpress.com', 'thieve.co'];
-    if (parsed.protocol !== 'https:' || parsed.username || parsed.password ||
-        !allowed.some((domain) => host === domain || host.endsWith('.' + domain))) {
-      throw new Error('Only HTTPS AliExpress or Thieve product URLs are allowed');
+    const isAliExpress = host === 'aliexpress.com' || host.endsWith('.aliexpress.com');
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port || !isAliExpress) {
+      if (host === 'thieve.co' || host.endsWith('.thieve.co')) {
+        throw new Error('Do not scrape Thieve pages. Use the official Thieve Shopify app and Bridge source sync instead.');
+      }
+      throw new Error('Only HTTPS AliExpress product URLs are supported by the manual importer');
+    }
+  }
+
+  private isPrivateAddress(address: string) {
+    const version = isIP(address);
+    if (version === 4) {
+      const parts = address.split('.').map(Number);
+      const [a, b] = parts;
+      return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) ||
+        (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) ||
+        (a === 100 && b >= 64 && b <= 127) || (a === 198 && (b === 18 || b === 19)) ||
+        a >= 224;
+    }
+    if (version === 6) {
+      const value = address.toLowerCase();
+      return value === '::' || value === '::1' || value.startsWith('fc') ||
+        value.startsWith('fd') || /^fe[89ab]/.test(value) || value.startsWith('ff') ||
+        value.startsWith('::ffff:');
+    }
+    return true;
+  }
+
+  private async assertSafeRequestUrl(input: string, navigation: boolean) {
+    const url = new URL(input);
+    const host = url.hostname.replace(/^\\[|\\]$/g, '').toLowerCase();
+    if (url.protocol !== 'https:' || url.username || url.password || url.port ||
+      host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') ||
+      host.endsWith('.internal') || isIP(host)) {
+      throw new Error('Blocked unsafe outbound request');
+    }
+    if (navigation && !(host === 'aliexpress.com' || host.endsWith('.aliexpress.com'))) {
+      throw new Error('Blocked redirect outside the approved supplier domain');
+    }
+    const addresses = await lookup(host, { all: true, verbatim: true });
+    if (!addresses.length || addresses.some((item) => this.isPrivateAddress(item.address))) {
+      throw new Error('Blocked outbound request to a private or non-routable address');
     }
   }
 
@@ -75,8 +115,17 @@ export class ProductScraperService {
         viewport: { width: 1366, height: 768 },
         locale: 'en-US',
       });
+      await context.route('**/*', async (route) => {
+        try {
+          await this.assertSafeRequestUrl(route.request().url(), route.request().isNavigationRequest());
+          await route.continue();
+        } catch {
+          await route.abort('blockedbyclient');
+        }
+      });
       const page = await context.newPage();
-      await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      this.validateSupplierUrl(page.url());
       const html = await page.content();
       return html;
     } finally {
