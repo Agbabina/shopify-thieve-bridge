@@ -40,6 +40,7 @@ export class ProductsService {
     const product = this.productsRepo.create({
       supplierName: scrapedData.supplierName ?? 'AliExpress',
       description: title || 'Untitled product',
+      bodyHtml: String(scrapedData.description ?? ''),
       supplierPrice,
       supplierCurrency,
       sellingPrice: sellingPrice ?? undefined,
@@ -60,6 +61,7 @@ export class ProductsService {
     sourceUrl: string;
     supplierName: string;
     title: string;
+    bodyHtml?: string | null;
     supplierPrice: number;
     supplierCurrency: string;
     sellingPrice: number;
@@ -80,6 +82,7 @@ export class ProductsService {
       existing.sourceUrl !== data.sourceUrl ||
       existing.supplierName !== (data.supplierName || 'Thieve') ||
       existing.description !== (data.title || 'Untitled product') ||
+      existing.bodyHtml !== (data.bodyHtml ?? null) ||
       Number(existing.supplierPrice) !== data.supplierPrice ||
       existing.supplierCurrency !== data.supplierCurrency ||
       Number(existing.sellingPrice ?? 0) !== data.sellingPrice ||
@@ -95,6 +98,7 @@ export class ProductsService {
     product.sourceUrl = data.sourceUrl;
     product.supplierName = data.supplierName || 'Thieve';
     product.description = data.title || 'Untitled product';
+    product.bodyHtml = data.bodyHtml ?? null;
     product.supplierPrice = data.supplierPrice;
     product.supplierCurrency = data.supplierCurrency;
     product.sellingPrice = data.sellingPrice || null;
