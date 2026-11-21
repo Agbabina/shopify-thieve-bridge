@@ -12,7 +12,17 @@ export class WebhookEventsService {
   async claim(webhookId: string, topic: string, shop: string): Promise<WebhookClaim> {
     const existing = await this.repository.findOne({ where: { webhookId } });
     if (existing?.status === 'processed') return 'processed';
-    if (existing?.status === 'processing') return 'processing';
+    if (existing?.status === 'processing') {
+      const staleBefore = new Date(Date.now() - 2 * 60 * 1000);
+      const reclaimed = await this.repository.createQueryBuilder()
+        .update(WebhookEvent)
+        .set({ status: 'processing', lastError: null, topic, shop, processedAt: new Date() })
+        .where('webhookId = :webhookId AND status = :processing AND processedAt < :staleBefore', {
+          webhookId, processing: 'processing', staleBefore,
+        })
+        .execute();
+      return reclaimed.affected ? 'claimed' : 'processing';
+    }
 
     if (existing?.status === 'failed') {
       const retry = await this.repository.createQueryBuilder()
@@ -30,6 +40,17 @@ export class WebhookEventsService {
       const current = await this.repository.findOne({ where: { webhookId } });
       if (!current) throw error;
       if (current.status === 'processed') return 'processed';
+      if (current.status === 'processing') {
+        const staleBefore = new Date(Date.now() - 2 * 60 * 1000);
+        const reclaimed = await this.repository.createQueryBuilder()
+          .update(WebhookEvent)
+          .set({ status: 'processing', lastError: null, topic, shop, processedAt: new Date() })
+          .where('webhookId = :webhookId AND status = :processing AND processedAt < :staleBefore', {
+            webhookId, processing: 'processing', staleBefore,
+          })
+          .execute();
+        return reclaimed.affected ? 'claimed' : 'processing';
+      }
       if (current.status === 'failed') {
         const retry = await this.repository.createQueryBuilder()
           .update(WebhookEvent)
