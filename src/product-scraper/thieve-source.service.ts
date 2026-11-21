@@ -265,7 +265,9 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
             if (!Number.isFinite(sellingPrice) || sellingPrice <= 0) {
               validationErrors.push(label + ': selling price is missing or invalid');
             }
-            if (variant.inventoryItem?.tracked && Number(variant.inventoryQuantity) <= 0 && variant.inventoryPolicy === 'DENY') {
+            if (!variant.inventoryItem?.tracked) {
+              validationErrors.push(label + ': supplier inventory tracking is disabled; availability cannot be verified');
+            } else if (Number(variant.inventoryQuantity) <= 0 && variant.inventoryPolicy === 'DENY') {
               validationErrors.push(label + ': Shopify inventory sync reports zero available stock');
             }
 
