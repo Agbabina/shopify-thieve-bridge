@@ -160,10 +160,14 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
         (reason ? ' ' + reason : ''),
       );
     }
+    const storeCurrency = String(body.data.shop?.currencyCode ?? '').toUpperCase();
+    if (!/^[A-Z]{3}$/.test(storeCurrency)) {
+      throw new ServiceUnavailableException('Shopify did not return a valid store currency; source sync stopped to avoid mispricing');
+    }
     return {
       nodes: body.data.products.nodes ?? [],
       pageInfo: body.data.products.pageInfo,
-      storeCurrency: String(body.data.shop?.currencyCode ?? 'NGN').toUpperCase(),
+      storeCurrency,
     };
   }
 
@@ -213,7 +217,7 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
           const supplierPrice = Number(cost?.amount ?? 0);
           const sellingPrice = Number(primary?.price ?? 0);
           const sellingCurrency = connection.storeCurrency;
-          const supplierCurrency = String(cost?.currencyCode ?? sellingCurrency).toUpperCase();
+          const supplierCurrency = String(cost?.currencyCode ?? '').toUpperCase();
           const imageUrls = (source.images?.nodes ?? [])
             .map((image) => image.url)
             .filter((url) => /^https:\/\//i.test(url));
@@ -224,8 +228,9 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
           if (variants.length !== 1) validationErrors.push('This Bridge version requires exactly one variant; map variants before approval');
           if (!Number.isFinite(supplierPrice) || supplierPrice <= 0) validationErrors.push('Supplier cost is missing from Shopify inventory item cost; add a verified cost before approval');
           if (!Number.isFinite(sellingPrice) || sellingPrice <= 0) validationErrors.push('Shopify variant selling price is missing or invalid');
-          if (!cost?.currencyCode) validationErrors.push('Supplier cost currency is missing; do not assume the Shopify store currency');
-          if (!/^[A-Z]{3}$/.test(supplierCurrency)) validationErrors.push('Supplier currency is missing or invalid');
+          if (!cost?.currencyCode || !/^[A-Z]{3}$/.test(supplierCurrency)) {
+            validationErrors.push('Supplier cost currency is missing or invalid; do not assume the Shopify store currency');
+          }
           if (!imageUrls.length) validationErrors.push('At least one HTTPS product image is required');
           if (cost?.currencyCode && supplierPrice > 0 && sellingPrice > 0 && /^[A-Z]{3}$/.test(supplierCurrency) && /^[A-Z]{3}$/.test(sellingCurrency)) {
             try {
