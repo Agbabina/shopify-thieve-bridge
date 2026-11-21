@@ -96,9 +96,11 @@ export class ProductScraperService {
       host.endsWith('.internal') || isIP(host)) {
       throw new Error('Blocked unsafe outbound request');
     }
-    if (navigation && !(host === 'aliexpress.com' || host.endsWith('.aliexpress.com'))) {
-      throw new Error('Blocked redirect outside the approved supplier domain');
-    }
+    const allowedSupplierHost = host === 'aliexpress.com' || host.endsWith('.aliexpress.com');
+    const allowedAssetHost = host === 'alicdn.com' || host.endsWith('.alicdn.com') ||
+      host === 'aliexpress-media.com' || host.endsWith('.aliexpress-media.com');
+    if (navigation && !allowedSupplierHost) throw new Error('Blocked redirect outside the approved supplier domain');
+    if (!navigation && !allowedSupplierHost && !allowedAssetHost) throw new Error('Blocked request to an unapproved supplier asset host');
     const addresses = await lookup(host, { all: true, verbatim: true });
     if (!addresses.length || addresses.some((item) => this.isPrivateAddress(item.address))) {
       throw new Error('Blocked outbound request to a private or non-routable address');
@@ -203,7 +205,7 @@ export class ProductScraperService {
   async scrapeAndParse(url: string) {
     const html = await this.scrapeProductWithRetry(url);
     const parsed = this.parseProduct(html);
-    return parsed ? { ...parsed, sourceUrl: parsed.sourceUrl || url } : null;
+    return parsed ? { ...parsed, sourceUrl: url } : null;
   }
 
   private async loadSearchPage(searchUrl: string) {
