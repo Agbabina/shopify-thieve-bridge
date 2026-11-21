@@ -7,6 +7,44 @@ import { ShopifyStore } from './entities/shopify-store.entity';
 
 @Injectable()
 export class ProductsService {
+  private safeDescriptionHtml(input: unknown): string | null {
+    const plain = String(input ?? '')
+      .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')
+      .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\\s+/g, ' ')
+      .trim();
+    if (!plain) return null;
+    const escaped = plain.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return '<p>' + escaped + '</p>';
+  }
+
+  private isAllowedSupplierImage(input: unknown): input is string {
+    if (typeof input !== 'string') return false;
+    try {
+      const url = new URL(input);
+      const host = url.hostname.toLowerCase();
+      return url.protocol === 'https:' && !url.username && !url.password &&
+        (host === 'alicdn.com' || host.endsWith('.alicdn.com') ||
+         host === 'aliexpress-media.com' || host.endsWith('.aliexpress-media.com'));
+    } catch {
+      return false;
+    }
+  }
+
+  private isAllowedShopifyImage(input: unknown): input is string {
+    if (typeof input !== 'string') return false;
+    try {
+      const url = new URL(input);
+      const host = url.hostname.toLowerCase();
+      return url.protocol === 'https:' &&
+        (host === 'cdn.shopify.com' || host.endsWith('.shopifycdn.net'));
+    } catch {
+      return false;
+    }
+  }
+
   constructor(
     @InjectRepository(Product) private readonly productsRepo: Repository<Product>,
     private readonly config: ConfigService,
@@ -21,9 +59,10 @@ export class ProductsService {
     if (!/^[A-Z]{3}$/.test(supplierCurrency)) {
       throw new BadRequestException('Supplier currency is missing or invalid; refusing to assume USD');
     }
-    const images = Array.isArray(scrapedData.images)
+    const rawImages = Array.isArray(scrapedData.images)
       ? scrapedData.images
       : scrapedData.images ? [scrapedData.images] : [];
+    const images = rawImages.filter((image: unknown) => this.isAllowedSupplierImage(image));
     const errors: string[] = [];
     const title = String(scrapedData.title ?? scrapedData.description ?? '').trim();
     if (title.length < 5) errors.push('Product title is missing or too short');
@@ -34,13 +73,13 @@ export class ProductsService {
     if (!/^https:\/\//i.test(sourceUrl)) errors.push('A verified HTTPS supplier source URL is required');
     const availability = String(scrapedData.availability ?? '').toLowerCase();
     if (availability.includes('outofstock') || availability.includes('soldout')) errors.push('Supplier reports that this product is out of stock');
-    if (!images.some((image: unknown) => typeof image === 'string' && /^https:\/\//i.test(image))) {
+    if (!images.length) {
       errors.push('At least one HTTPS product image is required');
     }
     const product = this.productsRepo.create({
       supplierName: scrapedData.supplierName ?? 'AliExpress',
       description: title || 'Untitled product',
-      bodyHtml: String(scrapedData.description ?? ''),
+      bodyHtml: this.safeDescriptionHtml(scrapedData.description),
       supplierPrice,
       supplierCurrency,
       sellingPrice: sellingPrice ?? undefined,
@@ -75,6 +114,8 @@ export class ProductsService {
       where: { sourceShopifyProductId: data.sourceShopifyProductId, store: { id: store.id } },
       relations: { store: true },
     });
+    const safeImages = data.imageUrls.filter((image) => this.isAllowedShopifyImage(image));
+    const nextBodyHtml = this.safeDescriptionHtml(data.bodyHtml);
     const nextErrors = data.validationErrors.length ? JSON.stringify(data.validationErrors) : null;
     const nextVariants = JSON.stringify(data.variants);
     const nextMargin = data.grossMarginPercent ?? null;
@@ -82,7 +123,7 @@ export class ProductsService {
       existing.sourceUrl !== data.sourceUrl ||
       existing.supplierName !== (data.supplierName || 'Thieve') ||
       existing.description !== (data.title || 'Untitled product') ||
-      existing.bodyHtml !== (data.bodyHtml ?? null) ||
+      existing.bodyHtml !== nextBodyHtml ||
       Number(existing.supplierPrice) !== data.supplierPrice ||
       existing.supplierCurrency !== data.supplierCurrency ||
       Number(existing.sellingPrice ?? 0) !== data.sellingPrice ||
@@ -98,13 +139,13 @@ export class ProductsService {
     product.sourceUrl = data.sourceUrl;
     product.supplierName = data.supplierName || 'Thieve';
     product.description = data.title || 'Untitled product';
-    product.bodyHtml = data.bodyHtml ?? null;
+    product.bodyHtml = nextBodyHtml;
     product.supplierPrice = data.supplierPrice;
     product.supplierCurrency = data.supplierCurrency;
     product.sellingPrice = data.sellingPrice || null;
     product.sellingCurrency = data.sellingCurrency;
     product.grossMarginPercent = nextMargin;
-    product.imageUrls = data.imageUrls;
+    product.imageUrls = safeImages;
     product.sourceVariantsJson = nextVariants;
     product.validationStatus = data.validationErrors.length ? 'needs_review' : 'passed';
     product.validationErrorsJson = nextErrors;
