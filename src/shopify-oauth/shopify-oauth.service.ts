@@ -95,7 +95,7 @@ export class ShopifyOAuthService {
 
   async registerWebhooks(shopInput: string, accessToken: string) {
     const shop = normalizeShopDomain(shopInput);
-    const baseUrl = this.required('SHOPIFY_APP_URL').replace(/\\/+$/, '');
+    const baseUrl = this.required('SHOPIFY_APP_URL').replace(/\/+$/, '');
     const topics = [
       { topic: 'ORDERS_CREATE', path: '/api/shopify/webhooks/orders-create' },
       { topic: 'ORDERS_PAID', path: '/api/shopify/webhooks/orders-paid' },
