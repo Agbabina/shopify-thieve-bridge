@@ -15,7 +15,7 @@ THIEVE_SOURCE_SYNC_INTERVAL_MINUTES=30
 THIEVE_SOURCE_TAG=bridge-source
 ```
 
-`THIEVE_SOURCE_URL` is the canonical Shopify store URL connected to Thieve, **not** a `thieve.co` product/catalog URL. Products should arrive in Shopify as drafts. If you set `THIEVE_SOURCE_TAG`, tag the intended source drafts with that tag in Shopify. Without a tag, every draft product in that connected store is inspected.
+`THIEVE_SOURCE_URL` is the canonical Shopify store URL connected to Thieve, **not** a `thieve.co` product/catalog URL. Bridge defaults to inspecting Shopify draft products. If Thieve imports them with a different status, set `THIEVE_SOURCE_STATUS=active` (or `archived` / `any`) to match. If you set `THIEVE_SOURCE_TAG`, tag the intended source products with that tag in Shopify. Without a tag, every product matching the selected status in that connected store is inspected.
 
 When the app starts, Bridge performs an initial sync and then polls at the configured interval (minimum five minutes), up to 200 draft products per run. You can also trigger it manually:
 
