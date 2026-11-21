@@ -17,14 +17,14 @@ THIEVE_SOURCE_TAG=bridge-source
 
 `THIEVE_SOURCE_URL` is the canonical Shopify store URL connected to Thieve, **not** a `thieve.co` product/catalog URL. Products should arrive in Shopify as drafts. If you set `THIEVE_SOURCE_TAG`, tag the intended source drafts with that tag in Shopify. Without a tag, every draft product in that connected store is inspected.
 
-When the app starts, Bridge performs an initial sync and then polls at the configured interval (minimum five minutes). You can also trigger it manually:
+When the app starts, Bridge performs an initial sync and then polls at the configured interval (minimum five minutes), up to 200 draft products per run. You can also trigger it manually:
 
 ```http
 POST /api/scraper/source/sync
 Authorization: Bearer <ADMIN_API_KEY>
 ```
 
-The source importer reads title, description, vendor, images, variant price, variant SKU, and Shopify inventory-item unit cost. Supplier cost must be present and positive; currency is taken from the cost record, while the selling currency is taken from the Shopify store. Missing cost, missing images, invalid prices, or multi-variant products are marked for review and cannot be approved. This version intentionally blocks multi-variant approval until variant-level pricing and mapping are implemented.
+The source importer reads title, description, vendor, images, variant price, variant SKU, and Shopify inventory-item unit cost. Supplier cost and its explicit currency must be present and positive; currency is taken from the cost record, while the selling currency is taken from the Shopify store. Bridge converts cost into the store currency and calculates an estimated gross margin. Set `PRODUCT_MIN_GROSS_MARGIN_PERCENT` (default 20) to block products below your threshold. Missing cost/currency, missing images, invalid prices, unavailable FX, low margin, or multi-variant products are marked for review and cannot be approved. Gross margin excludes shipping, payment fees, taxes, ads, refunds, and other operating costs. This version intentionally blocks multi-variant approval until variant-level pricing and mapping are implemented.
 
 Products enter Bridge as `pending_review`. A passing product must be explicitly approved:
 
@@ -121,7 +121,7 @@ Orders must enter through verified Shopify webhooks; there is no manual order-cr
 
 ## Currency and payments caveats
 
-- Supplier cost and selling price are stored with separate ISO currency codes. Never treat an absent currency as USD.
+- Supplier cost and selling price are stored with separate ISO currency codes. Never treat an absent currency as USD. Source products without an explicit supplier-cost currency are blocked from approval.
 - FX rates are indicative. The service caches fresh rates for ten minutes and may use a stale cached rate for up to 24 hours during provider outages. The API identifies stale results. Confirm actual supplier/bank rates before paying.
 - The dashboard's manual USD→NGN rate is for display/estimation only. It does not move money, change Shopify checkout currency, or change supplier invoices.
 - Revenue is reported by original order currency. Bridge does not sum NGN, USD, GBP, etc. into one misleading total.
