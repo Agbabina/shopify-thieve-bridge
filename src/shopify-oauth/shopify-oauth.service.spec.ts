@@ -18,7 +18,7 @@ describe('ShopifyOAuthService', () => {
   it('creates a high-entropy OAuth state bound to the initiating Shopify store', () => {
     const shop = 'demo.myshopify.com';
     const state = service.createOAuthState(shop);
-    expect(state).toMatch(/^[a-f0-9]{64}\\.[a-f0-9]{64}$/);
+    expect(state).toMatch(/^[a-f0-9]{64}\.[a-f0-9]{64}$/);
     expect(service.verifyOAuthState(state, shop)).toBe(true);
     expect(service.verifyOAuthState(state, 'another-shop.myshopify.com')).toBe(false);
   });
