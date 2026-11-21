@@ -163,7 +163,15 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
       const token = await this.tokens.getValidToken(shop);
       const tag = this.config.get<string>('THIEVE_SOURCE_TAG')?.trim();
       const safeTag = tag?.replace(/[^a-zA-Z0-9_-]/g, '');
-      const query = safeTag ? 'status:draft tag:' + safeTag : 'status:draft';
+      if (tag && !safeTag) throw new ServiceUnavailableException('THIEVE_SOURCE_TAG contains no valid tag characters');
+      const sourceStatus = String(this.config.get('THIEVE_SOURCE_STATUS') ?? 'draft').toLowerCase();
+      if (!['draft', 'active', 'archived', 'any'].includes(sourceStatus)) {
+        throw new ServiceUnavailableException('THIEVE_SOURCE_STATUS must be draft, active, archived, or any');
+      }
+      const queryParts = [];
+      if (sourceStatus !== 'any') queryParts.push('status:' + sourceStatus);
+      if (safeTag) queryParts.push('tag:' + safeTag);
+      const query = queryParts.join(' ') || 'status:draft';
       let after: string | null = null;
       let hasNextPage = true;
       let pages = 0;
