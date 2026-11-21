@@ -90,7 +90,7 @@ export class ProductScraperService {
 
   private async assertSafeRequestUrl(input: string, navigation: boolean) {
     const url = new URL(input);
-    const host = url.hostname.replace(/^\\[|\\]$/g, '').toLowerCase();
+    const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
     if (url.protocol !== 'https:' || url.username || url.password || url.port ||
       host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') ||
       host.endsWith('.internal') || isIP(host)) {
