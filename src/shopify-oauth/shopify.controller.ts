@@ -79,7 +79,7 @@ export class ShopifyController {
       const order = await this.ordersService.saveFromWebhook(event.payload, event.store, paid);
       const financialStatus = String(event.payload.financial_status ?? '').toLowerCase();
       if (paid || financialStatus === 'paid' || financialStatus === 'partially_paid') {
-        await this.fulfillmentTasks.ensureForPaidOrder(String(event.payload.id), event.store.shop);
+        await this.fulfillmentTasks.ensureForPaidOrder(String(event.payload.id), event.store.shop, String(event.payload.name ?? event.payload.order_number ?? event.payload.id));
       }
       return order;
     });
