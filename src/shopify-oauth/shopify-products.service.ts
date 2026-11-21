@@ -61,7 +61,6 @@ export class ShopifyProductsService {
           title: product.description,
           body_html: product.description,
           status: 'draft',
-          images: images.map((src: string) => ({ src })),
           variants: [{ id: Number(variantId), price: price.toFixed(2) }],
         },
       }),
