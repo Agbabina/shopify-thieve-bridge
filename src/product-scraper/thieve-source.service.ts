@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { ProductsService } from '../shopify-oauth/product.service';
 import { ShopifyStoresService } from '../shopify-oauth/shopify-stores.service';
 import { ShopifyTokenService } from '../shopify-oauth/shopify-token.service';
+import { CurrencyService } from '../shopify-oauth/currency.service';
 
 type ShopifyVariant = {
   id: string;
@@ -61,6 +62,7 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
     private readonly stores: ShopifyStoresService,
     private readonly tokens: ShopifyTokenService,
     private readonly products: ProductsService,
+    private readonly currency: CurrencyService,
   ) {}
 
   onModuleInit() {
@@ -184,6 +186,7 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
             .map((image) => image.url)
             .filter((url) => /^https:\/\//i.test(url));
           const validationErrors: string[] = [];
+          let grossMarginPercent: number | null = null;
 
           if (source.title.trim().length < 5) validationErrors.push('Product title is missing or too short');
           if (variants.length !== 1) validationErrors.push('This Bridge version requires exactly one variant; map variants before approval');
@@ -191,6 +194,19 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
           if (!Number.isFinite(sellingPrice) || sellingPrice <= 0) validationErrors.push('Shopify variant selling price is missing or invalid');
           if (!/^[A-Z]{3}$/.test(supplierCurrency)) validationErrors.push('Supplier currency is missing or invalid');
           if (!imageUrls.length) validationErrors.push('At least one HTTPS product image is required');
+          if (supplierPrice > 0 && sellingPrice > 0 && /^[A-Z]{3}$/.test(supplierCurrency) && /^[A-Z]{3}$/.test(sellingCurrency)) {
+            try {
+              const fx = await this.currency.getRate(supplierCurrency, sellingCurrency);
+              const supplierCostInStoreCurrency = supplierPrice * fx.rate;
+              grossMarginPercent = ((sellingPrice - supplierCostInStoreCurrency) / sellingPrice) * 100;
+              const minimumMargin = Number(this.config.get('PRODUCT_MIN_GROSS_MARGIN_PERCENT') ?? 20);
+              if (Number.isFinite(minimumMargin) && grossMarginPercent < minimumMargin) {
+                validationErrors.push('Estimated gross margin is below the configured minimum of ' + minimumMargin + '%');
+              }
+            } catch {
+              validationErrors.push('Could not obtain a supplier-to-store FX rate; enter a verified rate before approval');
+            }
+          }
 
           const saved = await this.products.saveFromThieveSource({
             sourceShopifyProductId: source.id,
@@ -204,6 +220,7 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
             imageUrls,
             variants,
             validationErrors,
+            grossMarginPercent,
           }, store);
           if (saved.created) imported++;
           else updated++;
