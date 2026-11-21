@@ -4,7 +4,7 @@ A private NestJS backend for moving products from Thieve's supported Shopify int
 
 ## Product sourcing: supported integration path
 
-Bridge does **not** scrape Thieve pages. Thieve's Terms of Service prohibit scraping and automated crawling. Use Thieve's official Shopify app to import products into your Shopify store; Bridge reads those Shopify draft products through the authenticated Shopify Admin GraphQL API.
+Bridge does **not** scrape Thieve pages. Thieve's Terms of Service prohibit scraping and automated crawling. Use Thieve's official Shopify app to import products into your Shopify store; Bridge reads the matching Shopify products through the authenticated Shopify Admin GraphQL API.
 
 Configure:
 
@@ -55,7 +55,7 @@ The source sync needs Shopify OAuth scopes `read_products` and `read_inventory`.
 - Fulfillment tracking sent to Shopify and synced back through `fulfillments/create`.
 - Private admin dashboard at `/admin` for products, orders, connected stores, payment visibility, currency display conversion, and manual tracking submission.
 
-Supplier checkout/payment is not automated by Bridge. Thieve's own service may handle supplier procurement when using its app and wallet; Bridge does not access that wallet or claim to place supplier orders.
+Supplier checkout/payment is not automated by Bridge. Any supplier procurement or fulfillment performed by Thieve remains outside Bridge; Bridge does not access Thieve accounts or claim to place supplier orders.
 
 ## Requirements and setup
 
@@ -96,7 +96,7 @@ The app listens on `http://localhost:3000`. Open `/admin` and enter `ADMIN_API_K
 2. Ensure scopes include `read_products,write_products,read_orders,write_orders,read_inventory,read_webhooks,write_webhooks,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders`.
 3. Expose the local server over HTTPS and set `SHOPIFY_APP_URL` and `SHOPIFY_REDIRECT_URL`.
 4. Install/reinstall the app to grant the required scopes.
-5. Connect Thieve's official Shopify app to the same store and import products as drafts.
+5. Connect Thieve's official Shopify app to the same store and import products; set `THIEVE_SOURCE_STATUS` to match the status Thieve creates.
 6. Check Shopify's webhook delivery log after creating and paying a test order in the development store.
 
 Webhook endpoints verify Shopify's HMAC using the raw request body. Do not disable signature verification. If you change the public URL, update the app URL, redirect URL, and environment file, then re-register webhooks.
