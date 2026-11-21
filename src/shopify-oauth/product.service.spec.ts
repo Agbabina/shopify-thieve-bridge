@@ -12,7 +12,7 @@ describe('ProductsService sourcing currency', () => {
       save: jest.fn(async (value) => ({ ...value, id: value.id ?? 'product-1' })),
       findOne: jest.fn().mockResolvedValue(null),
     };
-    service = new ProductsService(repository, { get: () => 'NGN' } as any);
+    service = new ProductsService(repository, { get: (key: string) => key === 'SHOPIFY_STORE_CURRENCY' ? 'NGN' : 20 } as any, { getRate: jest.fn().mockResolvedValue({ rate: 1, source: 'identity' }) } as any);
   });
 
   it('persists the supplier currency instead of silently defaulting to USD', async () => {
