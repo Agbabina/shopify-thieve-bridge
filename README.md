@@ -46,7 +46,8 @@ The source sync needs Shopify OAuth scopes `read_products` and `read_inventory`.
 
 ## Other existing functionality
 
-- Shopify OAuth install/callback with HMAC and state validation.
+- Shopify OAuth install/callback with HMAC and store-bound state validation.
+- Shopify product create/update and webhook registration through the GraphQL Admin API.
 - Store token persistence and refresh support.
 - Manual AliExpress product URL parsing (not a Thieve scraper).
 - Product drafts, review/approval, and Shopify draft publishing.
@@ -92,7 +93,7 @@ The app listens on `http://localhost:3000`. Open `/admin` and enter `ADMIN_API_K
 ## Shopify setup
 
 1. Configure the app URL and callback URL in the Shopify Dev Dashboard.
-2. Ensure scopes include `read_products,write_products,read_orders,write_orders,read_inventory,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders`.
+2. Ensure scopes include `read_products,write_products,read_orders,write_orders,read_inventory,read_webhooks,write_webhooks,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders`.
 3. Expose the local server over HTTPS and set `SHOPIFY_APP_URL` and `SHOPIFY_REDIRECT_URL`.
 4. Install/reinstall the app to grant the required scopes.
 5. Connect Thieve's official Shopify app to the same store and import products as drafts.
