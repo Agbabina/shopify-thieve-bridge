@@ -192,9 +192,10 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
           if (variants.length !== 1) validationErrors.push('This Bridge version requires exactly one variant; map variants before approval');
           if (!Number.isFinite(supplierPrice) || supplierPrice <= 0) validationErrors.push('Supplier cost is missing from Shopify inventory item cost; add a verified cost before approval');
           if (!Number.isFinite(sellingPrice) || sellingPrice <= 0) validationErrors.push('Shopify variant selling price is missing or invalid');
+          if (!cost?.currencyCode) validationErrors.push('Supplier cost currency is missing; do not assume the Shopify store currency');
           if (!/^[A-Z]{3}$/.test(supplierCurrency)) validationErrors.push('Supplier currency is missing or invalid');
           if (!imageUrls.length) validationErrors.push('At least one HTTPS product image is required');
-          if (supplierPrice > 0 && sellingPrice > 0 && /^[A-Z]{3}$/.test(supplierCurrency) && /^[A-Z]{3}$/.test(sellingCurrency)) {
+          if (cost?.currencyCode && supplierPrice > 0 && sellingPrice > 0 && /^[A-Z]{3}$/.test(supplierCurrency) && /^[A-Z]{3}$/.test(sellingCurrency)) {
             try {
               const fx = await this.currency.getRate(supplierCurrency, sellingCurrency);
               const supplierCostInStoreCurrency = supplierPrice * fx.rate;
