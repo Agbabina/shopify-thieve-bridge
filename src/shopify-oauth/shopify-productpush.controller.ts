@@ -22,7 +22,7 @@ export class ShopifyProductPushController {
     if (product.status !== 'approved') {
       throw new BadRequestException('Approve a product with passing validation before pushing it to Shopify');
     }
-    if (product.shopifyProductId) throw new BadRequestException('Product has already been pushed to Shopify');
+    if (product.shopifyProductId && !product.sourceShopifyProductId) throw new BadRequestException('Product has already been pushed to Shopify');
     const store = await this.storesService.findByShop(product.store.shop);
     if (!store) throw new BadRequestException('Connected Shopify store not found');
     const token = await this.tokenService.getValidToken(store.shop);
