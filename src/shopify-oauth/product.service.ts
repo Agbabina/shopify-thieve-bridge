@@ -69,6 +69,23 @@ export class ProductsService {
       where: { sourceShopifyProductId: data.sourceShopifyProductId, store: { id: store.id } },
       relations: { store: true },
     });
+    const nextErrors = data.validationErrors.length ? JSON.stringify(data.validationErrors) : null;
+    const nextVariants = JSON.stringify(data.variants);
+    const nextMargin = data.grossMarginPercent ?? null;
+    const sourceChanged = !existing ||
+      existing.sourceUrl !== data.sourceUrl ||
+      existing.supplierName !== (data.supplierName || 'Thieve') ||
+      existing.description !== (data.title || 'Untitled product') ||
+      Number(existing.supplierPrice) !== data.supplierPrice ||
+      existing.supplierCurrency !== data.supplierCurrency ||
+      Number(existing.sellingPrice ?? 0) !== data.sellingPrice ||
+      existing.sellingCurrency !== data.sellingCurrency ||
+      JSON.stringify(existing.imageUrls ?? []) !== JSON.stringify(data.imageUrls) ||
+      existing.sourceVariantsJson !== nextVariants ||
+      Number(existing.grossMarginPercent ?? 0) !== Number(nextMargin ?? 0);
+    const validationChanged = !existing ||
+      existing.validationStatus !== (data.validationErrors.length ? 'needs_review' : 'passed') ||
+      existing.validationErrorsJson !== nextErrors;
     const product = existing ?? this.productsRepo.create();
     product.sourceShopifyProductId = data.sourceShopifyProductId;
     product.sourceUrl = data.sourceUrl;
@@ -78,13 +95,13 @@ export class ProductsService {
     product.supplierCurrency = data.supplierCurrency;
     product.sellingPrice = data.sellingPrice || null;
     product.sellingCurrency = data.sellingCurrency;
-    product.grossMarginPercent = data.grossMarginPercent ?? null;
+    product.grossMarginPercent = nextMargin;
     product.imageUrls = data.imageUrls;
-    product.sourceVariantsJson = JSON.stringify(data.variants);
+    product.sourceVariantsJson = nextVariants;
     product.validationStatus = data.validationErrors.length ? 'needs_review' : 'passed';
-    product.validationErrorsJson = data.validationErrors.length ? JSON.stringify(data.validationErrors) : null;
+    product.validationErrorsJson = nextErrors;
     product.lastValidatedAt = new Date();
-    product.status = product.status === 'approved' || product.status === 'imported' ? product.status : 'pending_review';
+    if (sourceChanged || validationChanged) product.status = 'pending_review';
     product.store = store;
     const saved = await this.productsRepo.save(product);
     return { product: saved, created: !existing };
