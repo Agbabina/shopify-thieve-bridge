@@ -21,7 +21,7 @@ type ShopifySourceProduct = {
   handle: string;
   onlineStoreUrl?: string | null;
   images: { nodes: { url: string }[] };
-  variants: { nodes: ShopifyVariant[] };
+  variants: { nodes: ShopifyVariant[]; pageInfo?: { hasNextPage: boolean } };
 };
 
 const SOURCE_PRODUCTS_QUERY = `
@@ -44,6 +44,7 @@ const SOURCE_PRODUCTS_QUERY = `
             price
             inventoryItem { unitCost { amount currencyCode } }
           }
+          pageInfo { hasNextPage }
         }
       }
       pageInfo { hasNextPage endCursor }
@@ -212,41 +213,97 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
         for (const source of connection.nodes) {
           inspected++;
           const variants = source.variants?.nodes ?? [];
-          const primary = variants[0];
-          const cost = primary?.inventoryItem?.unitCost;
-          const supplierPrice = Number(cost?.amount ?? 0);
-          const sellingPrice = Number(primary?.price ?? 0);
           const sellingCurrency = connection.storeCurrency;
-          const supplierCurrency = String(cost?.currencyCode ?? '').toUpperCase();
+          const validationErrors: string[] = [];
+          const normalizedVariants: {
+            id: string;
+            title: string;
+            sku: string | null;
+            supplierPrice: number | null;
+            supplierCurrency: string | null;
+            sellingPrice: number;
+            sellingCurrency: string;
+            grossMarginPercent: number | null;
+          }[] = [];
+          const minimumMargin = Number(this.config.get('PRODUCT_MIN_GROSS_MARGIN_PERCENT') ?? 20);
+          const minimumMarginValid = Number.isFinite(minimumMargin) && minimumMargin >= 0 && minimumMargin <= 100;
+          if (!minimumMarginValid) {
+            validationErrors.push('PRODUCT_MIN_GROSS_MARGIN_PERCENT must be a number between 0 and 100');
+          }
+
+          if (source.title.trim().length < 5) validationErrors.push('Product title is missing or too short');
+          if (variants.length === 0) validationErrors.push('Product has no variants to validate');
+          if (source.variants?.pageInfo?.hasNextPage) {
+            validationErrors.push('Product has more than 20 variants; increase the source variant page size before approval');
+          }
           const imageUrls = (source.images?.nodes ?? [])
             .map((image) => image.url)
             .filter((url) => /^https:\/\//i.test(url));
-          const validationErrors: string[] = [];
-          let grossMarginPercent: number | null = null;
-
-          if (source.title.trim().length < 5) validationErrors.push('Product title is missing or too short');
-          if (variants.length !== 1) validationErrors.push('This Bridge version requires exactly one variant; map variants before approval');
-          if (!Number.isFinite(supplierPrice) || supplierPrice <= 0) validationErrors.push('Supplier cost is missing from Shopify inventory item cost; add a verified cost before approval');
-          if (!Number.isFinite(sellingPrice) || sellingPrice <= 0) validationErrors.push('Shopify variant selling price is missing or invalid');
-          if (!cost?.currencyCode || !/^[A-Z]{3}$/.test(supplierCurrency)) {
-            validationErrors.push('Supplier cost currency is missing or invalid; do not assume the Shopify store currency');
-          }
           if (!imageUrls.length) validationErrors.push('At least one HTTPS product image is required');
-          if (cost?.currencyCode && supplierPrice > 0 && sellingPrice > 0 && /^[A-Z]{3}$/.test(supplierCurrency) && /^[A-Z]{3}$/.test(sellingCurrency)) {
-            try {
-              const fx = await this.sourceFxRate(supplierCurrency, sellingCurrency);
-              const supplierCostInStoreCurrency = supplierPrice * fx.rate;
-              grossMarginPercent = ((sellingPrice - supplierCostInStoreCurrency) / sellingPrice) * 100;
-              const minimumMargin = Number(this.config.get('PRODUCT_MIN_GROSS_MARGIN_PERCENT') ?? 20);
-              if (!Number.isFinite(minimumMargin) || minimumMargin < 0 || minimumMargin > 100) {
-                validationErrors.push('PRODUCT_MIN_GROSS_MARGIN_PERCENT must be a number between 0 and 100');
-              } else if (grossMarginPercent < minimumMargin) {
-                validationErrors.push('Estimated gross margin is below the configured minimum of ' + minimumMargin + '%');
-              }
-            } catch {
-              validationErrors.push('Could not obtain a supplier-to-store FX rate; enter a verified rate before approval');
+
+          for (const variant of variants) {
+            const label = variant.title || variant.sku || 'Unnamed variant';
+            const cost = variant.inventoryItem?.unitCost;
+            const supplierPrice = Number(cost?.amount ?? 0);
+            const supplierCurrency = String(cost?.currencyCode ?? '').toUpperCase();
+            const sellingPrice = Number(variant.price ?? 0);
+            let margin: number | null = null;
+
+            if (!Number.isFinite(supplierPrice) || supplierPrice <= 0) {
+              validationErrors.push(label + ': supplier cost is missing or invalid');
             }
+            if (!/^[A-Z]{3}$/.test(supplierCurrency)) {
+              validationErrors.push(label + ': supplier cost currency is missing or invalid');
+            }
+            if (!Number.isFinite(sellingPrice) || sellingPrice <= 0) {
+              validationErrors.push(label + ': selling price is missing or invalid');
+            }
+
+            if (
+              Number.isFinite(supplierPrice) && supplierPrice > 0 &&
+              /^[A-Z]{3}$/.test(supplierCurrency) &&
+              Number.isFinite(sellingPrice) && sellingPrice > 0
+            ) {
+              try {
+                const fx = await this.sourceFxRate(supplierCurrency, sellingCurrency);
+                margin = Math.round(((sellingPrice - supplierPrice * fx.rate) / sellingPrice) * 10000) / 100;
+                if (minimumMarginValid && margin < minimumMargin) {
+                  validationErrors.push(label + ': estimated gross margin is below ' + minimumMargin + '%');
+                }
+              } catch {
+                validationErrors.push(label + ': could not obtain a supplier-to-store FX rate');
+              }
+            }
+
+            normalizedVariants.push({
+              id: variant.id,
+              title: variant.title,
+              sku: variant.sku,
+              supplierPrice: Number.isFinite(supplierPrice) && supplierPrice > 0 ? supplierPrice : null,
+              supplierCurrency: /^[A-Z]{3}$/.test(supplierCurrency) ? supplierCurrency : null,
+              sellingPrice: Number.isFinite(sellingPrice) && sellingPrice > 0 ? sellingPrice : 0,
+              sellingCurrency,
+              grossMarginPercent: margin,
+            });
           }
+
+          const validCosts = normalizedVariants.filter((variant) => variant.supplierPrice !== null);
+          const validSellingPrices = normalizedVariants.filter((variant) => variant.sellingPrice > 0);
+          const validMargins = normalizedVariants
+            .map((variant) => variant.grossMarginPercent)
+            .filter((margin): margin is number => margin !== null);
+          const supplierCurrencies = [...new Set(validCosts.map((variant) => variant.supplierCurrency).filter((value): value is string => Boolean(value)))];
+          if (supplierCurrencies.length > 1) {
+            validationErrors.push('Variants have different supplier currencies; normalize supplier costs before approval');
+          }
+          const supplierCurrency = supplierCurrencies.length === 1 ? supplierCurrencies[0] : '';
+          const supplierPrice = validCosts.length
+            ? Math.min(...validCosts.map((variant) => variant.supplierPrice as number))
+            : 0;
+          const sellingPrice = validSellingPrices.length
+            ? Math.min(...validSellingPrices.map((variant) => variant.sellingPrice))
+            : 0;
+          const grossMarginPercent = validMargins.length ? Math.min(...validMargins) : null;
 
           const saved = await this.products.saveFromThieveSource({
             sourceShopifyProductId: source.id,
@@ -254,14 +311,14 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
             supplierName: source.vendor || 'Thieve',
             title: source.title,
             bodyHtml: source.descriptionHtml ?? null,
-            supplierPrice: Number.isFinite(supplierPrice) && supplierPrice > 0 ? supplierPrice : 0,
+            supplierPrice,
             supplierCurrency,
-            sellingPrice: Number.isFinite(sellingPrice) && sellingPrice > 0 ? sellingPrice : 0,
+            sellingPrice,
             sellingCurrency,
-            imageUrls,
-            variants,
-            validationErrors,
             grossMarginPercent,
+            imageUrls,
+            variants: normalizedVariants,
+            validationErrors,
           }, store);
           if (saved.created) imported++;
           else updated++;
