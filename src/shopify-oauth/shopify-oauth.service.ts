@@ -167,4 +167,5 @@ export class ShopifyOAuthService {
       }
     }
     return results;
-  }\n}
+  }
+}
