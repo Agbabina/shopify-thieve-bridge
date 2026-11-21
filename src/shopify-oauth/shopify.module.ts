@@ -8,24 +8,28 @@ import { ShopifyStore } from './entities/shopify-store.entity';
 import { Product } from './entities/product.entity';
 import { Order } from './entities/order.entity';
 import { WebhookEvent } from './entities/webhook-event.entity';
+import { FulfillmentTask } from './entities/fulfillment-task.entity';
 import { ShopifyTokenService } from './shopify-token.service';
 import { ShopifyProductsService } from './shopify-products.service';
 import { ShopifyProductPushController } from './shopify-productpush.controller';
 import { OrdersService } from './orders.service';
 import { FulfillmentController } from './fulfillment.controller';
 import { FulfillmentService } from './fulfillment.service';
+import { FulfillmentTasksController } from './fulfillment-tasks.controller';
+import { FulfillmentTasksService } from './fulfillment-tasks.service';
 import { AdminController } from './admin.controller';
 import { AdminApiKeyGuard } from './admin-api-key.guard';
 import { WebhookEventsService } from './webhook-events.service';
 import { CurrencyService } from './currency.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([ShopifyStore, Product, Order, WebhookEvent])],
-  controllers: [ShopifyController, ShopifyProductPushController, FulfillmentController, AdminController],
+  imports: [TypeOrmModule.forFeature([ShopifyStore, Product, Order, WebhookEvent, FulfillmentTask])],
+  controllers: [ShopifyController, ShopifyProductPushController, FulfillmentController, FulfillmentTasksController, AdminController],
   providers: [
     ShopifyOAuthService, ShopifyStoresService, ProductsService, ShopifyProductsService,
-    ShopifyTokenService, OrdersService, FulfillmentService, AdminApiKeyGuard, WebhookEventsService, CurrencyService,
+    ShopifyTokenService, OrdersService, FulfillmentService, FulfillmentTasksService,
+    AdminApiKeyGuard, WebhookEventsService, CurrencyService,
   ],
-  exports: [ShopifyStoresService, ProductsService, ShopifyProductsService, ShopifyTokenService, OrdersService, CurrencyService],
+  exports: [ShopifyStoresService, ProductsService, ShopifyProductsService, ShopifyTokenService, OrdersService, CurrencyService, FulfillmentTasksService],
 })
 export class ShopifyModule {}
