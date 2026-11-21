@@ -6,7 +6,10 @@ import { ShopifyStore } from './entities/shopify-store.entity';
 
 @Injectable()
 export class ProductsService {
-  constructor(@InjectRepository(Product) private readonly productsRepo: Repository<Product>) {}
+  constructor(
+    @InjectRepository(Product) private readonly productsRepo: Repository<Product>,
+    private readonly config: ConfigService,
+  ) {}
 
   async saveFromScrape(scrapedData: any, store: ShopifyStore, sellingPrice?: number) {
     const supplierPrice = Number(scrapedData.price);
@@ -32,7 +35,7 @@ export class ProductsService {
       supplierPrice,
       supplierCurrency,
       sellingPrice: sellingPrice ?? undefined,
-      sellingCurrency: String(scrapedData.sellingCurrency ?? supplierCurrency).toUpperCase(),
+      sellingCurrency: String(scrapedData.sellingCurrency ?? this.config.get<string>('SHOPIFY_STORE_CURRENCY') ?? 'NGN').toUpperCase(),
       imageUrls: images,
       sourceUrl: scrapedData.sourceUrl ?? scrapedData.url ?? null,
       validationStatus: errors.length ? 'needs_review' : 'passed',
@@ -56,6 +59,7 @@ export class ProductsService {
     imageUrls: string[];
     variants: unknown[];
     validationErrors: string[];
+    grossMarginPercent?: number | null;
   }, store: ShopifyStore) {
     const existing = await this.productsRepo.findOne({
       where: { sourceShopifyProductId: data.sourceShopifyProductId, store: { id: store.id } },
@@ -70,6 +74,7 @@ export class ProductsService {
     product.supplierCurrency = data.supplierCurrency;
     product.sellingPrice = data.sellingPrice || null;
     product.sellingCurrency = data.sellingCurrency;
+    product.grossMarginPercent = data.grossMarginPercent ?? null;
     product.imageUrls = data.imageUrls;
     product.sourceVariantsJson = JSON.stringify(data.variants);
     product.validationStatus = data.validationErrors.length ? 'needs_review' : 'passed';
