@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { CurrencyService } from './currency.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from './entities/product.entity';
@@ -48,7 +49,21 @@ export class ProductsService {
   constructor(
     @InjectRepository(Product) private readonly productsRepo: Repository<Product>,
     private readonly config: ConfigService,
+    private readonly currency: CurrencyService,
   ) {}
+
+  private async getConfiguredRate(from: string, to: string) {
+    const manualRate = this.config.get<string>('PRODUCT_FX_MANUAL_RATE');
+    const manualFrom = String(this.config.get('PRODUCT_FX_MANUAL_FROM') ?? 'USD').toUpperCase();
+    const manualTo = String(this.config.get('PRODUCT_FX_MANUAL_TO') ?? 'NGN').toUpperCase();
+    if (manualRate && from === manualFrom && to === manualTo) return this.currency.getRate(from, to, manualRate);
+    if (manualRate && from === manualTo && to === manualFrom) {
+      const value = Number(manualRate);
+      if (!Number.isFinite(value) || value <= 0) throw new BadRequestException('PRODUCT_FX_MANUAL_RATE must be positive');
+      return this.currency.getRate(from, to, String(1 / value));
+    }
+    return this.currency.getRate(from, to);
+  }
 
   async saveFromScrape(scrapedData: any, store: ShopifyStore, sellingPrice?: number) {
     const supplierPrice = Number(scrapedData.price);
@@ -69,6 +84,22 @@ export class ProductsService {
     if (sellingPrice === undefined || !Number.isFinite(Number(sellingPrice)) || Number(sellingPrice) <= 0) {
       errors.push('A positive selling price in the configured Shopify store currency is required');
     }
+    const sellingCurrency = String(scrapedData.sellingCurrency ?? this.config.get<string>('SHOPIFY_STORE_CURRENCY') ?? 'NGN').toUpperCase();
+    let grossMarginPercent: number | null = null;
+    if (sellingPrice !== undefined && Number.isFinite(Number(sellingPrice)) && Number(sellingPrice) > 0) {
+      try {
+        const fx = await this.getConfiguredRate(supplierCurrency, sellingCurrency);
+        grossMarginPercent = Math.round(((Number(sellingPrice) - supplierPrice * fx.rate) / Number(sellingPrice)) * 10000) / 100;
+        const minimumMargin = Number(this.config.get('PRODUCT_MIN_GROSS_MARGIN_PERCENT') ?? 20);
+        if (!Number.isFinite(minimumMargin) || minimumMargin < 0 || minimumMargin > 100) {
+          errors.push('PRODUCT_MIN_GROSS_MARGIN_PERCENT must be a number between 0 and 100');
+        } else if (grossMarginPercent < minimumMargin) {
+          errors.push('Estimated gross margin is below the configured minimum of ' + minimumMargin + '%');
+        }
+      } catch {
+        errors.push('Could not obtain a supplier-to-store FX rate; enter a verified rate before approval');
+      }
+    }
     const sourceUrl = String(scrapedData.sourceUrl ?? scrapedData.url ?? '');
     if (!/^https:\/\//i.test(sourceUrl)) errors.push('A verified HTTPS supplier source URL is required');
     const availability = String(scrapedData.availability ?? '').toLowerCase();
@@ -83,7 +114,8 @@ export class ProductsService {
       supplierPrice,
       supplierCurrency,
       sellingPrice: sellingPrice ?? undefined,
-      sellingCurrency: String(scrapedData.sellingCurrency ?? this.config.get<string>('SHOPIFY_STORE_CURRENCY') ?? 'NGN').toUpperCase(),
+      sellingCurrency,
+      grossMarginPercent,
       imageUrls: images,
       sourceUrl: sourceUrl || null,
       validationStatus: errors.length ? 'needs_review' : 'passed',
