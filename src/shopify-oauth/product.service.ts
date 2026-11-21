@@ -116,7 +116,9 @@ export class ProductsService {
     });
     const safeImages = data.imageUrls.filter((image) => this.isAllowedShopifyImage(image));
     const nextBodyHtml = this.safeDescriptionHtml(data.bodyHtml);
-    const nextErrors = data.validationErrors.length ? JSON.stringify(data.validationErrors) : null;
+    const sourceErrors = [...data.validationErrors];
+    if (!safeImages.length) sourceErrors.push('No approved Shopify CDN product images were found');
+    const nextErrors = sourceErrors.length ? JSON.stringify(sourceErrors) : null;
     const nextVariants = JSON.stringify(data.variants);
     const nextMargin = data.grossMarginPercent ?? null;
     const sourceChanged = !existing ||
@@ -128,11 +130,11 @@ export class ProductsService {
       existing.supplierCurrency !== data.supplierCurrency ||
       Number(existing.sellingPrice ?? 0) !== data.sellingPrice ||
       existing.sellingCurrency !== data.sellingCurrency ||
-      JSON.stringify(existing.imageUrls ?? []) !== JSON.stringify(data.imageUrls) ||
+      JSON.stringify(existing.imageUrls ?? []) !== JSON.stringify(safeImages) ||
       existing.sourceVariantsJson !== nextVariants ||
       Number(existing.grossMarginPercent ?? 0) !== Number(nextMargin ?? 0);
     const validationChanged = !existing ||
-      existing.validationStatus !== (data.validationErrors.length ? 'needs_review' : 'passed') ||
+      existing.validationStatus !== (sourceErrors.length ? 'needs_review' : 'passed') ||
       existing.validationErrorsJson !== nextErrors;
     const product = existing ?? this.productsRepo.create();
     product.sourceShopifyProductId = data.sourceShopifyProductId;
@@ -147,7 +149,7 @@ export class ProductsService {
     product.grossMarginPercent = nextMargin;
     product.imageUrls = safeImages;
     product.sourceVariantsJson = nextVariants;
-    product.validationStatus = data.validationErrors.length ? 'needs_review' : 'passed';
+    product.validationStatus = sourceErrors.length ? 'needs_review' : 'passed';
     product.validationErrorsJson = nextErrors;
     product.lastValidatedAt = new Date();
     if (sourceChanged || validationChanged) product.status = 'pending_review';
