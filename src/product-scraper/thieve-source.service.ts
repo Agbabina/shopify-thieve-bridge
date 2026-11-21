@@ -216,6 +216,7 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
             sourceUrl: source.onlineStoreUrl || 'https://' + shop + '/products/' + source.handle,
             supplierName: source.vendor || 'Thieve',
             title: source.title,
+            bodyHtml: source.descriptionHtml ?? null,
             supplierPrice: Number.isFinite(supplierPrice) && supplierPrice > 0 ? supplierPrice : 0,
             supplierCurrency,
             sellingPrice: Number.isFinite(sellingPrice) && sellingPrice > 0 ? sellingPrice : 0,
