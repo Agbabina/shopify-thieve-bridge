@@ -122,7 +122,7 @@ Orders must enter through verified Shopify webhooks; there is no manual order-cr
 
 ## Currency and payments caveats
 
-- Supplier cost and selling price are stored with separate ISO currency codes. Never treat an absent currency as USD. Source products without an explicit supplier-cost currency are blocked from approval.
+- Supplier cost and selling price are stored with separate ISO currency codes. Thieve-source sync reads the store currency from Shopify; manual AliExpress imports require `SHOPIFY_STORE_CURRENCY` to match the connected store. Never treat an absent currency as USD. Source products without an explicit supplier-cost currency are blocked from approval.
 - FX rates are indicative. The service caches fresh rates for ten minutes and may use a stale cached rate for up to 24 hours during provider outages. The API identifies stale results. Confirm actual supplier/bank rates before paying.
 - The dashboard's manual USD→NGN rate is for display/estimation only. Product validation has a separate optional `PRODUCT_FX_MANUAL_RATE` environment override for the explicitly configured currency pair. It does not move money, change Shopify checkout currency, or change supplier invoices.
 - Revenue is reported by original order currency. Bridge does not sum NGN, USD, GBP, etc. into one misleading total.
