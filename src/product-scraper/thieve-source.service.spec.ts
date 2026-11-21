@@ -79,6 +79,55 @@ describe('ThieveSourceService', () => {
     );
   });
 
+  it('validates each variant and uses the lowest margin as the product summary', async () => {
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          shop: { currencyCode: 'NGN' },
+          products: {
+            nodes: [{
+              id: 'gid://shopify/Product/789',
+              title: 'A multi-variant product',
+              descriptionHtml: '<p>Two options</p>',
+              vendor: 'Thieve',
+              handle: 'multi-variant',
+              onlineStoreUrl: null,
+              images: { nodes: [{ url: 'https://cdn.shopify.com/product.jpg' }] },
+              variants: {
+                nodes: [
+                  { id: 'gid://shopify/ProductVariant/1', title: 'Small', sku: 'S', price: '100', inventoryItem: { unitCost: { amount: '50', currencyCode: 'NGN' } } },
+                  { id: 'gid://shopify/ProductVariant/2', title: 'Large', sku: 'L', price: '120', inventoryItem: { unitCost: { amount: '72', currencyCode: 'NGN' } } },
+                ],
+                pageInfo: { hasNextPage: false },
+              },
+            }],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      }),
+    } as Response);
+
+    await expect(service.syncConfiguredSource()).resolves.toMatchObject({
+      inspected: 1,
+      imported: 1,
+      query: 'status:draft',
+    });
+    expect(products.saveFromThieveSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        supplierPrice: 50,
+        sellingPrice: 100,
+        grossMarginPercent: 40,
+        validationErrors: [],
+        variants: expect.arrayContaining([
+          expect.objectContaining({ title: 'Small', grossMarginPercent: 50 }),
+          expect.objectContaining({ title: 'Large', grossMarginPercent: 40 }),
+        ]),
+      }),
+      store,
+    );
+  });
+
   it('rejects a Thieve webpage URL instead of scraping it', async () => {
     config.get = (key: string) => key === 'THIEVE_SOURCE_URL' ? 'https://thieve.co/products/item' : undefined;
     await expect(service.syncConfiguredSource()).rejects.toBeInstanceOf(ServiceUnavailableException);
