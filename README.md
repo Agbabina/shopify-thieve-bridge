@@ -165,3 +165,16 @@ Other production checks still required:
 6. Shopify's fulfillment webhook reconciles the fulfillment status and tracking details in Bridge.
 
 The queue is an operations tracker, not a supplier purchasing integration. Bridge does not claim to buy from Thieve or AliExpress, create supplier checkouts, or receive carrier delivery scans. `delivered` is reserved for a future carrier integration. Shopify's fulfillment mutation requires the merchant-managed fulfillment-order write scope and the store user's permission to fulfill and ship orders; reauthorize the app if Shopify reports missing access.
+
+## CJdropshipping API sourcing (initial catalog adapter)
+
+Bridge includes a server-side CJdropshipping API adapter for live product discovery. It uses CJ API 2.0, obtains and caches the access token on the backend, and searches the official product catalog. Configure `CJ_API_KEY` in `shopify.env`; do not put an API key or access token in frontend code or in a URL. The API base URL is intentionally fixed to CJ's official developer host rather than configured from an arbitrary environment URL.
+
+Search products with:
+
+```http
+GET /api/scraper/cj/products?keyword=wireless%20charger&page=1&size=20&countryCode=US
+Authorization: Bearer <ADMIN_API_KEY>
+```
+
+The endpoint returns normalized supplier catalog results (CJ product ID/SKU, title, image, indicative USD price, stock summary and category). It is currently a **read-only discovery adapter**: it does not yet create Bridge product records, publish to Shopify, place supplier orders, or guarantee destination-specific landed cost. Before approval, the next integration stage must retrieve variants and destination-specific shipping quotes, verify live inventory, and feed validated supplier data into the existing product review pipeline. Supplier checkout/payment remains an explicit operator action.
