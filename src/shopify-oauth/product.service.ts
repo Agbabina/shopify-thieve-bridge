@@ -177,7 +177,7 @@ export class ProductsService {
     product.bodyHtml = nextBodyHtml;
     product.supplierPrice = data.supplierPrice;
     product.supplierCurrency = data.supplierCurrency;
-    product.sellingPrice = data.sellingPrice || null;
+    product.sellingPrice = data.sellingPrice;
     product.sellingCurrency = data.sellingCurrency;
     product.grossMarginPercent = nextMargin;
     product.imageUrls = safeImages;
