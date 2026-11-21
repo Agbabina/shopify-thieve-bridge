@@ -11,3 +11,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS IDX_product_store_source_shopify_id
   ON products(sourceShopifyProductId, storeId);
 ALTER TABLE webhook_events ADD COLUMN status varchar(16) NOT NULL DEFAULT 'processed';
 ALTER TABLE webhook_events ADD COLUMN lastError text;
+ALTER TABLE products ADD COLUMN grossMarginPercent decimal;
