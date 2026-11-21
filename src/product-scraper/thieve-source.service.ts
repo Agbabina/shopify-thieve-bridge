@@ -242,6 +242,7 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
           }
 
           if (source.title.trim().length < 5) validationErrors.push('Product title is missing or too short');
+          if (source.title.trim().length > 255) validationErrors.push('Product title exceeds Shopify’s 255-character limit');
           if (variants.length === 0) validationErrors.push('Product has no variants to validate');
           if (source.variants?.pageInfo?.hasNextPage) {
             validationErrors.push('Product has more than 20 variants; increase the source variant page size before approval');
