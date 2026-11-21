@@ -211,11 +211,20 @@ export class ProductScraperService {
   private async loadSearchPage(searchUrl: string) {
     const browser = await chromium.launch({ headless: true });
     try {
-      const page = await browser.newPage({
+      const context = await browser.newContext({
         userAgent:
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
         viewport: { width: 1366, height: 768 },
       });
+      await context.route('**/*', async (route) => {
+        try {
+          await this.assertSafeRequestUrl(route.request().url(), route.request().isNavigationRequest());
+          await route.continue();
+        } catch {
+          await route.abort('blockedbyclient');
+        }
+      });
+      const page = await context.newPage();
 
       await page.goto(searchUrl, {
         waitUntil: 'domcontentloaded',
