@@ -141,33 +141,47 @@ export class ProductScraperService {
 
   parseProduct(html: string) {
     const $ = cheerio.load(html);
-    let productData: any = null;
+    const candidates: any[] = [];
+    const collectProducts = (value: any) => {
+      if (!value) return;
+      if (Array.isArray(value)) {
+        value.forEach(collectProducts);
+        return;
+      }
+      if (typeof value !== 'object') return;
+      const types = Array.isArray(value['@type']) ? value['@type'] : [value['@type']];
+      if (types.includes('Product')) candidates.push(value);
+      if (value['@graph']) collectProducts(value['@graph']);
+      if (value.itemListElement) collectProducts(value.itemListElement.map((item: any) => item.item ?? item));
+    };
 
-    $('script[type="application/ld+json"]').each((i, el) => {
+    $('script[type="application/ld+json"]').each((_, el) => {
       try {
-        const json = JSON.parse($(el).html() || '');
-        const candidate = Array.isArray(json)
-          ? json.find((j) => j['@type'] === 'Product')
-          : json;
-        if (candidate && candidate['@type'] === 'Product') {
-          productData = candidate;
-        }
-      } catch (e) {
-        // not valid JSON or not the right script tag, skip it
+        collectProducts(JSON.parse($(el).html() || ''));
+      } catch {
+        // Ignore malformed JSON-LD blocks and continue looking for product data.
       }
     });
 
-    if (!productData) {
-      return null;
-    }
+    const productData = candidates[0];
+    if (!productData) return null;
+    const offerValue = productData.offers;
+    const offer = Array.isArray(offerValue) ? offerValue[0] : offerValue;
+    const rawImages = Array.isArray(productData.image) ? productData.image : productData.image ? [productData.image] : [];
+    const images = rawImages
+      .map((image: any) => typeof image === 'string' ? image : image?.url)
+      .filter((image: unknown) => typeof image === 'string');
 
     return {
       title: productData.name,
-      images: productData.image,
-      price: productData.offers?.price,
-      currency: productData.offers?.priceCurrency,
-      availability: productData.offers?.availability,
-      sourceUrl: productData.offers?.url,
+      description: productData.description,
+      images,
+      price: offer?.price ?? offer?.lowPrice,
+      currency: offer?.priceCurrency,
+      availability: offer?.availability,
+      sourceUrl: offer?.url ?? productData.url,
+      supplierName: 'AliExpress',
+      sku: productData.sku,
     };
   }
 
@@ -188,7 +202,8 @@ export class ProductScraperService {
 
   async scrapeAndParse(url: string) {
     const html = await this.scrapeProductWithRetry(url);
-    return this.parseProduct(html);
+    const parsed = this.parseProduct(html);
+    return parsed ? { ...parsed, sourceUrl: parsed.sourceUrl || url } : null;
   }
 
   private async loadSearchPage(searchUrl: string) {
