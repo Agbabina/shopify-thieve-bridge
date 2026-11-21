@@ -189,8 +189,8 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
       if (!['draft', 'active', 'archived', 'any'].includes(sourceStatus)) {
         throw new ServiceUnavailableException('THIEVE_SOURCE_STATUS must be draft, active, archived, or any');
       }
-      if (sourceStatus === 'any' && !safeTag) {
-        throw new ServiceUnavailableException('Set THIEVE_SOURCE_TAG when THIEVE_SOURCE_STATUS=any to avoid importing every product in the store');
+      if (sourceStatus !== 'draft' && !safeTag) {
+        throw new ServiceUnavailableException('Set THIEVE_SOURCE_TAG when sourcing non-draft products to avoid importing the entire store');
       }
       const queryParts: string[] = [];
       if (sourceStatus !== 'any') queryParts.push('status:' + sourceStatus);
