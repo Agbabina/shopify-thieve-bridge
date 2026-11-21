@@ -59,6 +59,10 @@ The source sync needs Shopify OAuth scopes `read_products` and `read_inventory`.
 
 Supplier checkout/payment is not automated by Bridge. Any supplier procurement or fulfillment performed by Thieve remains outside Bridge; Bridge does not access Thieve accounts or claim to place supplier orders.
 
+## Client demo and launch readiness
+
+The purple admin dashboard includes a guided four-step launch checklist for Shopify connection, first product, first order, and first Shopify fulfillment. Use the [client demo and launch checklist](docs/client-demo-checklist.md) to prepare a development-store walkthrough and explain the current automation boundaries accurately. The checklist is activity-based: it reports what Bridge has actually received and does not claim that supplier checkout or carrier delivery is automated.
+
 ## Requirements and setup
 
 - Node.js 20+ (current LTS recommended)
