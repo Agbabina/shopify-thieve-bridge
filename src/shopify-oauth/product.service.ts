@@ -27,6 +27,9 @@ export class ProductsService {
     const errors: string[] = [];
     const title = String(scrapedData.title ?? scrapedData.description ?? '').trim();
     if (title.length < 5) errors.push('Product title is missing or too short');
+    if (sellingPrice === undefined || !Number.isFinite(Number(sellingPrice)) || Number(sellingPrice) <= 0) {
+      errors.push('A positive selling price in the configured Shopify store currency is required');
+    }
     const sourceUrl = String(scrapedData.sourceUrl ?? scrapedData.url ?? '');
     if (!/^https:\/\//i.test(sourceUrl)) errors.push('A verified HTTPS supplier source URL is required');
     const availability = String(scrapedData.availability ?? '').toLowerCase();
