@@ -8,6 +8,7 @@ import { ShopifyOAuthService } from './shopify-oauth.service';
 import { ShopifyStoresService } from './shopify-stores.service';
 import { OrdersService } from './orders.service';
 import { WebhookEventsService } from './webhook-events.service';
+import { FulfillmentTasksService } from './fulfillment-tasks.service';
 import { normalizeShopDomain } from './shop-domain';
 
 @Controller('api/shopify')
@@ -17,6 +18,7 @@ export class ShopifyController {
     private readonly shopifyStores: ShopifyStoresService,
     private readonly ordersService: OrdersService,
     private readonly webhookEvents: WebhookEventsService,
+    private readonly fulfillmentTasks: FulfillmentTasksService,
   ) {}
 
   @Get('install')
@@ -64,16 +66,23 @@ export class ShopifyController {
   @Post('webhooks/fulfillments-create')
   async handleFulfillmentCreated(@Req() req: RawBodyRequest<Request>) {
     const event = await this.verifyAndLoadWebhook(req);
-    return this.processWebhook(event, () =>
-      this.ordersService.applyFulfillmentWebhook(event.payload, event.store),
-    );
+    return this.processWebhook(event, async () => {
+      const order = await this.ordersService.applyFulfillmentWebhook(event.payload, event.store);
+      await this.fulfillmentTasks.applyShopifyWebhook(event.payload, event.store.shop);
+      return order;
+    });
   }
 
   private async handleOrderWebhook(req: RawBodyRequest<Request>, paid: boolean) {
     const event = await this.verifyAndLoadWebhook(req);
-    return this.processWebhook(event, () =>
-      this.ordersService.saveFromWebhook(event.payload, event.store, paid),
-    );
+    return this.processWebhook(event, async () => {
+      const order = await this.ordersService.saveFromWebhook(event.payload, event.store, paid);
+      const financialStatus = String(event.payload.financial_status ?? '').toLowerCase();
+      if (paid || financialStatus === 'paid' || financialStatus === 'partially_paid') {
+        await this.fulfillmentTasks.ensureForPaidOrder(String(event.payload.id), event.store.shop, String(event.payload.name ?? event.payload.order_number ?? event.payload.id).replace(/^#/, ''));
+      }
+      return order;
+    });
   }
 
   private async processWebhook(

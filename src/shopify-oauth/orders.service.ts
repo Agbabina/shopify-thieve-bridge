@@ -74,11 +74,14 @@ export class OrdersService {
       relations: { store: true },
     });
     if (!order) throw new NotFoundException('Order not found for fulfillment webhook');
-    const tracking = payload.tracking_info ?? {};
-    if (tracking.number) order.trackingNumber = String(tracking.number);
-    if (tracking.company) order.trackingCompany = String(tracking.company);
-    if (tracking.url) order.trackingUrl = String(tracking.url);
-    order.status = payload.status === 'success' ? 'fulfilled' : 'fulfillment_in_progress';
+    const info = Array.isArray(payload.tracking_info) ? payload.tracking_info[0] : payload.tracking_info;
+    const number = info?.number ?? payload.tracking_number ?? payload.tracking_numbers?.[0];
+    const company = info?.company ?? payload.tracking_company;
+    const url = info?.url ?? payload.tracking_url ?? payload.tracking_urls?.[0];
+    if (number) order.trackingNumber = String(number);
+    if (company) order.trackingCompany = String(company);
+    if (url) order.trackingUrl = String(url);
+    order.status = String(payload.status).toLowerCase() === 'success' ? 'fulfilled' : 'fulfillment_in_progress';
     if (order.status === 'fulfilled') order.fulfilledAt = new Date();
     return this.toResponse(await this.ordersRepo.save(order));
   }
