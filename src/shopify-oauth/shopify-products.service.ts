@@ -104,29 +104,11 @@ export class ShopifyProductsService {
     if (!/^gid:\/\/shopify\/Product\/\d+$/.test(sourceProductGid)) {
       throw new BadGatewayException('Source Shopify product ID is invalid');
     }
-    let sourceVariants: { id?: string }[] = [];
-    try {
-      sourceVariants = JSON.parse(product.sourceVariantsJson ?? '[]');
-    } catch {
-      throw new BadGatewayException('Stored source variant data is invalid; re-sync the source product');
-    }
-    if (sourceVariants.length !== 1 || !sourceVariants[0].id ||
-      !/^gid:\/\/shopify\/ProductVariant\/\d+$/.test(sourceVariants[0].id)) {
-      throw new BadGatewayException('Only a single mapped source variant can be updated in this Bridge version');
-    }
-    const price = Number(product.sellingPrice);
-    if (!Number.isFinite(price) || price <= 0) {
-      throw new BadGatewayException('Approved selling price must be greater than zero');
-    }
     return this.productSet(accessToken, shop, {
       title: product.description,
       descriptionHtml: product.bodyHtml || product.description,
       vendor: product.supplierName || 'Thieve',
       status: 'DRAFT',
-      variants: [{
-        id: sourceVariants[0].id,
-        price: price.toFixed(2),
-      }],
     }, { id: sourceProductGid });
   }
 }
