@@ -26,6 +26,10 @@ export class ProductsService {
     const errors: string[] = [];
     const title = String(scrapedData.title ?? scrapedData.description ?? '').trim();
     if (title.length < 5) errors.push('Product title is missing or too short');
+    const sourceUrl = String(scrapedData.sourceUrl ?? scrapedData.url ?? '');
+    if (!/^https:\/\//i.test(sourceUrl)) errors.push('A verified HTTPS supplier source URL is required');
+    const availability = String(scrapedData.availability ?? '').toLowerCase();
+    if (availability.includes('outofstock') || availability.includes('soldout')) errors.push('Supplier reports that this product is out of stock');
     if (!images.some((image: unknown) => typeof image === 'string' && /^https:\/\//i.test(image))) {
       errors.push('At least one HTTPS product image is required');
     }
@@ -37,7 +41,7 @@ export class ProductsService {
       sellingPrice: sellingPrice ?? undefined,
       sellingCurrency: String(scrapedData.sellingCurrency ?? this.config.get<string>('SHOPIFY_STORE_CURRENCY') ?? 'NGN').toUpperCase(),
       imageUrls: images,
-      sourceUrl: scrapedData.sourceUrl ?? scrapedData.url ?? null,
+      sourceUrl: sourceUrl || null,
       validationStatus: errors.length ? 'needs_review' : 'passed',
       validationErrorsJson: errors.length ? JSON.stringify(errors) : null,
       lastValidatedAt: new Date(),
