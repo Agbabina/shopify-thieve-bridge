@@ -22,7 +22,8 @@ export class ShopifyController {
   @Get('install')
   install(@Query('shop') shop: string, @Res() res: Response) {
     const domain = normalizeShopDomain(shop);
-    const state = this.shopifyOAuth.createOAuthState();
+    const domain = normalizeShopDomain(shop);
+    const state = this.shopifyOAuth.createOAuthState(domain);
     res.cookie('shopify_oauth_state', state, {
       httpOnly: true, secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax', maxAge: 5 * 60 * 1000, path: '/api/shopify/callback',
@@ -43,6 +44,9 @@ export class ShopifyController {
     res.clearCookie('shopify_oauth_state', { path: '/api/shopify/callback' });
 
     const domain = normalizeShopDomain(shop);
+    if (!this.shopifyOAuth.verifyOAuthState(state, domain)) {
+      throw new UnauthorizedException('OAuth state is not valid for this Shopify store. Restart installation.');
+    }
     const tokenData = await this.shopifyOAuth.exchangeCodeForToken(domain, code);
     await this.shopifyStores.upsertStore(domain, tokenData.access_token, tokenData.refresh_token ?? null, tokenData.expires_in, tokenData.scope);
     const webhooks = await this.shopifyOAuth.registerWebhooks(domain, tokenData.access_token);
