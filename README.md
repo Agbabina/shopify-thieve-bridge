@@ -127,7 +127,7 @@ Orders must enter through verified Shopify webhooks; there is no manual order-cr
 - The dashboard's manual USD→NGN rate is for display/estimation only. Product validation has a separate optional `PRODUCT_FX_MANUAL_RATE` environment override for the explicitly configured currency pair. It does not move money, change Shopify checkout currency, or change supplier invoices.
 - Revenue is reported by original order currency. Bridge does not sum NGN, USD, GBP, etc. into one misleading total.
 - `SHOPIFY_PAYMENT_PROVIDER=Paystack` is only a dashboard label. It does not activate Paystack, verify merchant onboarding, or prove that a live payment succeeded. The store owner must configure an available gateway in Shopify Admin and complete test and live checks. Bridge records Shopify payment events; it never handles card details.
-- A missing supplier cost, multi-variant product, or invalid image blocks approval. A validation pass is not a guarantee of demand, product quality, delivery, or profitability.
+- A missing supplier cost on any variant, a product with more than 20 variants, or an invalid image blocks approval. A validation pass is not a guarantee of demand, product quality, delivery, or profitability.
 
 ## Database and deployment caveats
 
