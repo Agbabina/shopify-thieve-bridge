@@ -52,7 +52,9 @@ The source sync needs Shopify OAuth scopes `read_products` and `read_inventory`.
 - Manual AliExpress product URL parsing (not a Thieve scraper).
 - Product drafts, review/approval, and Shopify draft publishing.
 - Shopify order webhooks for `orders/create` and `orders/paid`.
-- Fulfillment tracking sent to Shopify and synced back through `fulfillments/create`.
+- A paid Shopify order automatically creates an idempotent fulfillment task in Bridge. The admin queue tracks supplier reference, procurement/processing/shipped states, carrier details, Shopify sync time, and delivery-state limitations.
+- Fulfillment tracking is sent to Shopify through the Admin GraphQL `fulfillmentCreate` mutation; Shopify fulfillment webhooks reconcile tracking and fulfillment state back into Bridge.
+- A purple, responsive operations dashboard at `/admin` provides overview, sourcing review, order search, fulfillment queue actions, and webhook activity.
 - Private admin dashboard at `/admin` for products, orders, connected stores, payment visibility, currency display conversion, and manual tracking submission.
 
 Supplier checkout/payment is not automated by Bridge. Any supplier procurement or fulfillment performed by Thieve remains outside Bridge; Bridge does not access Thieve accounts or claim to place supplier orders.
@@ -64,7 +66,7 @@ Supplier checkout/payment is not automated by Bridge. Any supplier procurement o
 - Shopify development store and app credentials
 - Public HTTPS callback URL (ngrok is fine for local testing)
 
-Copy `.env.example` to `shopify.env` and fill in your values. Never commit `shopify.env`, `.env`, database files, Shopify tokens, or encryption keys.
+Copy `.env.example` to `shopify.env` and fill in your values. For production SQLite deployments, back up the database and apply the migrations in chronological order, including `migrations/2026-11-22-fulfillment-tasks.sql`; development TypeORM synchronization creates the table automatically. Never commit `shopify.env`, `.env`, database files, Shopify tokens, or encryption keys.
 
 Required:
 - `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`
@@ -111,14 +113,17 @@ Webhook endpoints verify Shopify's HMAC using the raw request body. Do not disab
 - `POST /api/scraper/source/sync` — manually sync configured Shopify drafts.
 - `POST /api/scraper/:productId/approve` — approve a product only if validation passed.
 - `POST /api/shopify-products/:productId/push` — create/update an approved Shopify draft.
-- `POST /api/shopify/orders/:shopifyOrderId/fulfill` — submit tracking and create a Shopify fulfillment.
+- `GET /api/fulfillment-tasks` — list fulfillment tasks (optional `status` and `shop` filters).
+- `PATCH /api/fulfillment-tasks/:id` — update supplier reference, notes, shipment details, or a valid task status.
+- `POST /api/fulfillment-tasks/:id/sync-shopify` — create the Shopify fulfillment from a shipped task and submit tracking/customer notification.
+- `POST /api/shopify/orders/:shopifyOrderId/fulfill` — legacy direct tracking submission endpoint.
 - `POST /api/scraper/import` — manually parse an allowed AliExpress product URL.
 - `POST /api/scraper/seed-mock` — seed development-only sample products.
 
 All admin, scraper, product-push, and fulfillment operations require:
 `Authorization: Bearer <ADMIN_API_KEY>`.
 
-Orders must enter through verified Shopify webhooks; there is no manual order-creation endpoint.
+Orders enter through verified Shopify webhooks; Bridge does not invent local orders. A task is created when the paid webhook (or an order-create payload already marked paid) is processed. Duplicate task creation is prevented by a unique store/order index. Supplier procurement remains a manual operator action: Bridge records the supplier reference and progress but does not place supplier orders. A carrier integration is required before delivery can be confirmed automatically; the dashboard intentionally does not let an operator mark an order delivered without carrier evidence.
 
 ## Currency and payments caveats
 
@@ -144,3 +149,15 @@ Other production checks still required:
 - The dashboard is a single-admin operations surface, not a merchant-facing multi-tenant UI.
 - Supplier procurement, supplier payments, refunds, chargebacks, and full delivery reconciliation are not implemented by Bridge.
 - Automated tests and a real deployment smoke test are required before treating this as production-ready.
+
+
+## Fulfillment operations workflow
+
+1. Shopify sends a verified `orders/paid` webhook.
+2. Bridge upserts the order and creates one `awaiting_supplier` fulfillment task per Shopify store/order.
+3. An operator records the supplier order reference and moves the task through `supplier_ordered` and `processing`.
+4. Once the supplier dispatches, the operator records carrier, tracking number, HTTPS tracking URL, and marks the task `shipped`.
+5. The operator selects **Sync to Shopify**. Bridge creates a Shopify fulfillment through GraphQL, attaches tracking, and requests customer notification.
+6. Shopify's fulfillment webhook reconciles the fulfillment status and tracking details in Bridge.
+
+The queue is an operations tracker, not a supplier purchasing integration. Bridge does not claim to buy from Thieve or AliExpress, create supplier checkouts, or receive carrier delivery scans. `delivered` is reserved for a future carrier integration. Shopify's fulfillment mutation requires the merchant-managed fulfillment-order write scope and the store user's permission to fulfill and ship orders; reauthorize the app if Shopify reports missing access.
