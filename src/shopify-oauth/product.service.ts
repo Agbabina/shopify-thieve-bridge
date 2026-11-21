@@ -77,7 +77,8 @@ export class ProductsService {
     product.lastValidatedAt = new Date();
     product.status = product.status === 'approved' || product.status === 'imported' ? product.status : 'pending_review';
     product.store = store;
-    return this.productsRepo.save(product);
+    const saved = await this.productsRepo.save(product);
+    return { product: saved, created: !existing };
   }
 
   async findById(id: string) {
