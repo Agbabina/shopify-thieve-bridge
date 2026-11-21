@@ -188,7 +188,7 @@ export class ProductScraperService {
   async scrapeProductWithRetry(url: string, maxAttempts: number = 2) {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const html = await this.scrapeProduct(url);
-      if (html.length > 150000) {
+      if (this.parseProduct(html)) {
         return html;
       }
       if (attempt < maxAttempts) {
@@ -196,7 +196,7 @@ export class ProductScraperService {
       }
     }
     throw new Error(
-      'Could not get a full product page after retries - likely bot-blocked',
+      'Could not extract structured product data after retries; the supplier page may be blocked or unsupported',
     );
   }
 
