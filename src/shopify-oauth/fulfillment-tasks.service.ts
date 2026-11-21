@@ -10,6 +10,16 @@ const STATUSES: FulfillmentTaskStatus[] = [
   'awaiting_supplier', 'supplier_ordered', 'processing', 'shipped',
   'fulfilled', 'delivered', 'cancelled', 'exception',
 ];
+const TRANSITIONS: Record<FulfillmentTaskStatus, FulfillmentTaskStatus[]> = {
+  awaiting_supplier: ['supplier_ordered', 'exception', 'cancelled'],
+  supplier_ordered: ['processing', 'shipped', 'exception', 'cancelled'],
+  processing: ['shipped', 'exception', 'cancelled'],
+  shipped: ['exception'],
+  fulfilled: ['delivered'],
+  delivered: [],
+  cancelled: [],
+  exception: ['awaiting_supplier', 'supplier_ordered', 'processing', 'shipped', 'cancelled'],
+};
 
 @Injectable()
 export class FulfillmentTasksService {
@@ -20,16 +30,16 @@ export class FulfillmentTasksService {
     private readonly shopifyFulfillment: FulfillmentService,
   ) {}
 
-  async ensureForPaidOrder(shopifyOrderId: string, shop: string) {
+  async ensureForPaidOrder(shopifyOrderId: string, shop: string, orderNumber?: string) {
     const order = await this.orders.findByShopifyOrderId(shopifyOrderId, shop);
-    if (!order || !['paid', 'partially_paid'].includes(String(order.financialStatus).toLowerCase())) return null;
+    if (!order) return null;
     const existing = await this.tasks.findOne({ where: { shop: order.store.shop, shopifyOrderId } });
     if (existing) return existing;
     return this.tasks.save(this.tasks.create({
       shop: order.store.shop,
       shopifyOrderId,
       orderRecordId: order.id,
-      orderNumber: String(shopifyOrderId),
+      orderNumber: orderNumber || shopifyOrderId,
       customerName: order.customerName,
       orderTotal: Number(order.total),
       currency: order.currency,
@@ -41,7 +51,7 @@ export class FulfillmentTasksService {
     if (status && !STATUSES.includes(status as FulfillmentTaskStatus)) {
       throw new BadRequestException('Unsupported fulfillment task status');
     }
-    const where: Record<string, unknown> = {};
+    const where: any = {};
     if (status) where.status = status;
     if (shopInput) {
       const store = await this.stores.findByShop(shopInput);
@@ -62,9 +72,11 @@ export class FulfillmentTasksService {
     const task = await this.tasks.findOne({ where: { id } });
     if (!task) throw new NotFoundException('Fulfillment task not found');
     if (input.status && !STATUSES.includes(input.status)) throw new BadRequestException('Unsupported fulfillment task status');
-    if (task.status === 'fulfilled' || task.status === 'delivered' || task.status === 'cancelled') {
-      throw new BadRequestException('This fulfillment task is already closed');
+    if (input.status && input.status !== task.status && !TRANSITIONS[task.status].includes(input.status)) {
+      throw new BadRequestException('Invalid fulfillment transition: ' + task.status + ' → ' + input.status);
     }
+    if (input.status === 'fulfilled') throw new BadRequestException('Use the Shopify sync action to complete fulfillment');
+    if (input.status === 'delivered') throw new BadRequestException('Delivery confirmation must come from a carrier integration');
     if (input.trackingUrl && !/^https:\/\//i.test(input.trackingUrl)) {
       throw new BadRequestException('Tracking URL must use HTTPS');
     }
@@ -100,10 +112,13 @@ export class FulfillmentTasksService {
     if (!payload?.order_id) return null;
     const task = await this.tasks.findOne({ where: { shop, shopifyOrderId: String(payload.order_id) } });
     if (!task) return null;
-    const tracking = payload.tracking_info ?? {};
-    if (tracking.number) task.trackingNumber = String(tracking.number);
-    if (tracking.company) task.trackingCompany = String(tracking.company);
-    if (tracking.url) task.trackingUrl = String(tracking.url);
+    const info = Array.isArray(payload.tracking_info) ? payload.tracking_info[0] : payload.tracking_info;
+    const number = info?.number ?? payload.tracking_number ?? payload.tracking_numbers?.[0];
+    const company = info?.company ?? payload.tracking_company;
+    const url = info?.url ?? payload.tracking_url ?? payload.tracking_urls?.[0];
+    if (number) task.trackingNumber = String(number);
+    if (company) task.trackingCompany = String(company);
+    if (url) task.trackingUrl = String(url);
     if (String(payload.status).toLowerCase() === 'success') {
       task.status = 'fulfilled';
       task.shopifySyncedAt = new Date();
