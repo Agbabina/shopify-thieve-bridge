@@ -10,11 +10,11 @@ import { ShopifyStore } from './entities/shopify-store.entity';
 export class ProductsService {
   private safeDescriptionHtml(input: unknown): string | null {
     const plain = String(input ?? '')
-      .replace(/<script[\\s\\S]*?<\\/script>/gi, ' ')
-      .replace(/<style[\\s\\S]*?<\\/style>/gi, ' ')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
       .replace(/<[^>]*>/g, ' ')
       .replace(/&nbsp;/gi, ' ')
-      .replace(/\\s+/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim();
     if (!plain) return null;
     const escaped = plain.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
