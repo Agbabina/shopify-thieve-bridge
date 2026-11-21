@@ -35,6 +35,9 @@ export class Product {
   @Column({ type: 'varchar', length: 3, default: 'NGN' })
   sellingCurrency: string;
 
+  @Column('decimal', { nullable: true })
+  grossMarginPercent: number | null;
+
   @Column('simple-array', { nullable: true })
   imageUrls: string[];
 
