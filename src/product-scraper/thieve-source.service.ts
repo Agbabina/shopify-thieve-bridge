@@ -232,7 +232,6 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
             sellingCurrency: string;
             grossMarginPercent: number | null;
             inventoryTracked: boolean;
-            inventoryQuantity: number | null;
             inventoryPolicy: string | null;
           }[] = [];
           const minimumMargin = Number(this.config.get('PRODUCT_MIN_GROSS_MARGIN_PERCENT') ?? 20);
@@ -306,8 +305,6 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
               sellingCurrency,
               grossMarginPercent: margin,
               inventoryTracked: Boolean(variant.inventoryItem?.tracked),
-              inventoryQuantity: variant.inventoryQuantity === undefined || variant.inventoryQuantity === null
-                ? null : Number(variant.inventoryQuantity),
               inventoryPolicy: variant.inventoryPolicy ?? null,
             });
           }
