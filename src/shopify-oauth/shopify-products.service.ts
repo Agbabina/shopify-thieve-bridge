@@ -85,6 +85,7 @@ export class ShopifyProductsService {
     return this.productSet(accessToken, shop, {
       title: product.description,
       descriptionHtml: product.bodyHtml || product.description,
+      vendor: product.supplierName || 'Bridge',
       status: 'DRAFT',
       files,
       productOptions: [{
@@ -120,6 +121,7 @@ export class ShopifyProductsService {
     return this.productSet(accessToken, shop, {
       title: product.description,
       descriptionHtml: product.bodyHtml || product.description,
+      vendor: product.supplierName || 'Thieve',
       status: 'DRAFT',
       variants: [{
         id: sourceVariants[0].id,
