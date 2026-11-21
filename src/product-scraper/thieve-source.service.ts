@@ -201,7 +201,9 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
               const supplierCostInStoreCurrency = supplierPrice * fx.rate;
               grossMarginPercent = ((sellingPrice - supplierCostInStoreCurrency) / sellingPrice) * 100;
               const minimumMargin = Number(this.config.get('PRODUCT_MIN_GROSS_MARGIN_PERCENT') ?? 20);
-              if (Number.isFinite(minimumMargin) && grossMarginPercent < minimumMargin) {
+              if (!Number.isFinite(minimumMargin) || minimumMargin < 0 || minimumMargin > 100) {
+                validationErrors.push('PRODUCT_MIN_GROSS_MARGIN_PERCENT must be a number between 0 and 100');
+              } else if (grossMarginPercent < minimumMargin) {
                 validationErrors.push('Estimated gross margin is below the configured minimum of ' + minimumMargin + '%');
               }
             } catch {
