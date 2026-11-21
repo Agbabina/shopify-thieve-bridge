@@ -49,9 +49,6 @@ export class ShopifyProductsService {
     const price = Number(product.sellingPrice);
     if (!Number.isFinite(price) || price <= 0) throw new BadGatewayException('Approved selling price must be greater than zero');
 
-    const images = Array.isArray(product.imageUrls)
-      ? product.imageUrls.filter((url: unknown) => typeof url === 'string' && /^https:\/\//i.test(url))
-      : [];
     const response = await fetch('https://' + shop + '/admin/api/2026-07/products/' + productId + '.json', {
       method: 'PUT',
       headers: { 'X-Shopify-Access-Token': accessToken, 'Content-Type': 'application/json' },
