@@ -4,7 +4,7 @@ A private NestJS backend for moving products from Thieve's supported Shopify int
 
 ## Product sourcing: supported integration path
 
-Bridge does **not** scrape Thieve pages. Thieve's Terms of Service prohibit scraping and automated crawling. Use Thieve's official Shopify app to import products into your Shopify store; Bridge reads the matching Shopify products through the authenticated Shopify Admin GraphQL API.
+Bridge does **not** scrape Thieve pages. [Thieve's Terms of Service](https://thieve.co/terms) explicitly prohibit spidering, crawling, and scraping. Use [Thieve's official Shopify app](https://apps.shopify.com/thieve-fulfillment) to import products into your Shopify store; Bridge reads the matching Shopify products through the authenticated Shopify Admin GraphQL API.
 
 Configure:
 
