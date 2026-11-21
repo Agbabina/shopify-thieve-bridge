@@ -83,6 +83,9 @@ export class FulfillmentTasksService {
     if (input.status === 'shipped' && !(input.trackingNumber ?? task.trackingNumber)?.trim()) {
       throw new BadRequestException('A tracking number is required before marking an order shipped');
     }
+    if (input.status === 'shipped' && !(input.trackingUrl ?? task.trackingUrl)?.trim()) {
+      throw new BadRequestException('An HTTPS tracking URL is required before marking an order shipped');
+    }
     if (input.supplierOrderReference !== undefined) task.supplierOrderReference = input.supplierOrderReference.trim() || null;
     if (input.trackingNumber !== undefined) task.trackingNumber = input.trackingNumber.trim() || null;
     if (input.trackingCompany !== undefined) task.trackingCompany = input.trackingCompany.trim() || null;
@@ -97,6 +100,7 @@ export class FulfillmentTasksService {
     if (!task) throw new NotFoundException('Fulfillment task not found');
     if (task.status !== 'shipped') throw new BadRequestException('Mark the supplier shipment as shipped before syncing to Shopify');
     if (!task.trackingNumber) throw new BadRequestException('Tracking number is required');
+    if (!task.trackingUrl || !/^https:\/\//i.test(task.trackingUrl)) throw new BadRequestException('A valid HTTPS tracking URL is required');
     const result = await this.shopifyFulfillment.fulfillOrder(task.shop, task.shopifyOrderId, {
       number: task.trackingNumber,
       company: task.trackingCompany ?? undefined,
