@@ -20,7 +20,7 @@ describe('ProductsService sourcing currency', () => {
       title: 'A real product title',
       price: '8500',
       currency: 'NGN',
-      images: ['https://cdn.example.com/product.jpg'],
+      images: ['https://ae01.alicdn.com/product.jpg'],
       sourceUrl: 'https://www.aliexpress.com/item/123.html',
     }, store, 12000);
 
