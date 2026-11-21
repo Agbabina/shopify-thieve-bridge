@@ -10,7 +10,9 @@ type ShopifyVariant = {
   title: string;
   sku: string | null;
   price: string;
-  inventoryItem?: { unitCost?: { amount: string; currencyCode: string } | null } | null;
+  inventoryQuantity?: number;
+  inventoryPolicy?: string;
+  inventoryItem?: { tracked?: boolean; unitCost?: { amount: string; currencyCode: string } | null } | null;
 };
 
 type ShopifySourceProduct = {
@@ -42,7 +44,9 @@ const SOURCE_PRODUCTS_QUERY = `
             title
             sku
             price
-            inventoryItem { unitCost { amount currencyCode } }
+            inventoryQuantity
+            inventoryPolicy
+            inventoryItem { tracked unitCost { amount currencyCode } }
           }
           pageInfo { hasNextPage }
         }
@@ -260,6 +264,9 @@ export class ThieveSourceService implements OnModuleInit, OnModuleDestroy {
             }
             if (!Number.isFinite(sellingPrice) || sellingPrice <= 0) {
               validationErrors.push(label + ': selling price is missing or invalid');
+            }
+            if (variant.inventoryItem?.tracked && Number(variant.inventoryQuantity) <= 0 && variant.inventoryPolicy === 'DENY') {
+              validationErrors.push(label + ': Shopify inventory sync reports zero available stock');
             }
 
             if (
