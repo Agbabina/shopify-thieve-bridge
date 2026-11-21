@@ -17,17 +17,30 @@ export class FulfillmentService {
   ) {}
 
   private async graphql<T>(shop: string, token: string, query: string, variables: Record<string, unknown>): Promise<T> {
-    const response = await fetch('https://' + shop + '/admin/api/2026-07/graphql.json', {
+    const version = process.env.SHOPIFY_ADMIN_API_VERSION || '2026-07';
+    const response = await fetch('https://' + shop + '/admin/api/' + version + '/graphql.json', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Shopify-Access-Token': token },
       body: JSON.stringify({ query, variables }),
+      signal: AbortSignal.timeout(20000),
     });
-    const json = await response.json().catch(() => ({})) as { data?: T; errors?: unknown };
-    if (!response.ok || json.errors || !json.data) throw new BadGatewayException('Shopify GraphQL request failed: HTTP ' + response.status);
+    const json = await response.json().catch(() => ({})) as {
+      data?: T;
+      errors?: { message?: string }[];
+    };
+    const errors = (json.errors ?? []).map((error) => error.message).filter(Boolean);
+    if (!response.ok || errors.length || !json.data) {
+      throw new BadGatewayException(
+        'Shopify fulfillment API failed (' + response.status + ')' + (errors.length ? ': ' + errors.join('; ') : ''),
+      );
+    }
     return json.data;
   }
 
   async fulfillOrder(shopInput: string, shopifyOrderId: string, tracking: { number: string; company?: string; url?: string }) {
+    if (!/^\d+$/.test(String(shopifyOrderId))) throw new BadRequestException('Shopify order ID must be numeric');
+    if (!tracking.number?.trim()) throw new BadRequestException('Tracking number is required');
+    if (tracking.url && !/^https:\/\//i.test(tracking.url)) throw new BadRequestException('Tracking URL must use HTTPS');
     const store = await this.storesService.findByShop(shopInput);
     if (!store) throw new NotFoundException('Connected Shopify store not found');
     const order = await this.ordersService.findByShopifyOrderId(shopifyOrderId, store.shop);
@@ -54,7 +67,7 @@ export class FulfillmentService {
     }>(store.shop, token, FULFILLMENT_CREATE_MUTATION, {
       fulfillment: {
         notifyCustomer: true,
-        trackingInfo: { number: tracking.number, company: tracking.company, url: tracking.url },
+        trackingInfo: { number: tracking.number.trim(), company: tracking.company, url: tracking.url },
         lineItemsByFulfillmentOrder: open.map((item) => ({ fulfillmentOrderId: item.id })),
       },
     });
