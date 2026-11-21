@@ -81,6 +81,7 @@ export class ProductsService {
     const errors: string[] = [];
     const title = String(scrapedData.title ?? scrapedData.description ?? '').trim();
     if (title.length < 5) errors.push('Product title is missing or too short');
+    if (title.length > 255) errors.push('Product title exceeds Shopify’s 255-character limit');
     if (sellingPrice === undefined || !Number.isFinite(Number(sellingPrice)) || Number(sellingPrice) <= 0) {
       errors.push('A positive selling price in the configured Shopify store currency is required');
     }
