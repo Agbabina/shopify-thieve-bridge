@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Query, UseGuards, BadRequestException, Param } from '@nestjs/common';
 import { ProductScraperService } from './product-scraper.service';
 import { ThieveSourceService } from './thieve-source.service';
+import { CjDropshippingService } from './cj-dropshipping.service';
 import { ProductsService } from '../shopify-oauth/product.service';
 import { ShopifyStoresService } from '../shopify-oauth/shopify-stores.service';
 import { AdminApiKeyGuard } from '../shopify-oauth/admin-api-key.guard';
@@ -11,9 +12,26 @@ export class ProductScraperController {
   constructor(
     private readonly scraperService: ProductScraperService,
     private readonly thieveSourceService: ThieveSourceService,
+    private readonly cjDropshippingService: CjDropshippingService,
     private readonly productsService: ProductsService,
     private readonly shopifyStoresService: ShopifyStoresService,
   ) {}
+
+  @Get('cj/products')
+  searchCjProducts(
+    @Query('keyword') keyword: string,
+    @Query('page') page?: string,
+    @Query('size') size?: string,
+    @Query('countryCode') countryCode?: string,
+  ) {
+    if (!keyword?.trim()) throw new BadRequestException('keyword is required');
+    return this.cjDropshippingService.searchProducts({
+      keyword,
+      page: page === undefined ? undefined : Number(page),
+      size: size === undefined ? undefined : Number(size),
+      countryCode: countryCode?.toUpperCase(),
+    });
+  }
 
   @Post('source/sync')
   syncConfiguredSource() {
